@@ -6,7 +6,7 @@
 
 //Struct for command
 typedef struct cmd {
-	char inst[9];//contains the line as String
+	char inst[6];//contains the line as String, 5 hexa digits + '\0'
 	int opcode;
 	int rd;
 	int rs;
@@ -18,8 +18,8 @@ typedef struct cmd {
 //Global Parameters:
 #define SIZE 4096 //2^12
 #define SIZE_OF_DISK 16384 //128*128
-char file_arr[SIZE + 1][9]; //array of memin
-char disk_out_array[SIZE_OF_DISK + 1][9]; //array of diskout
+char file_arr[SIZE + 1][6]; //array of memin
+char disk_out_array[SIZE_OF_DISK + 1][9]; //array of diskout, each line is 8 hexas + '\0' in the end
 int reg_arr[16]; //array of all registers
 static int memin_array_size;
 static int pc = 0;
@@ -27,7 +27,7 @@ static int count_inst = 0;
 static int is_irq1_run = 0;
 static int count_1024 = 0;
 int last_line_of_memout = SIZE;
-char IOregister[18][9] = { "00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000" };
+char IOregister[21][9] = { "00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"};
 static int irq = 0;
 int ready_to_irq = 1;
 int irq2_interrupt_pc[SIZE] = { 0 };// array of all the pc which has irq2in interrupt
@@ -94,7 +94,7 @@ void read_Data_from_irq2in(FILE * irq2in)
 	int i = 0;
 	while (!feof(irq2in))
 	{
-		fgets(mline, 10, irq2in); //scans the first 8 chars in a line
+		fgets(mline, 10, irq2in); //scans the first 8 chars in a line - FIXME: should make this line clearer
 		irq2_interrupt_pc[i] = atoi(mline);
 		i++;
 	}
@@ -251,35 +251,35 @@ int HexToInt2sComp(char * h) {
 //copy memin to array char "file_arr" 
 void FillArray(FILE * memin)
 {
-	char mline[9];
+	char mline[6];
 	int i = 0;
 	while (!feof(memin))
 	{
-		fscanf(memin, "%8[^\n]\n", mline); //scans the first 8 chars in a line
+		fscanf(memin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
 		strcpy(file_arr[i], mline); //fills array[i]
 		i++;
 	}
 	memin_array_size = i;
 	while (i < SIZE)
 	{
-		strcpy(file_arr[i], "00000000"); // paddin with zeros all the empty memory fills array[i]
+		strcpy(file_arr[i], "00000"); // paddin with zeros all the empty memory fills array[i]
 		i++;
 	}
 }
 //copy the content of diksin into array disk_out_array
 void FillArrayOfdiskout(FILE * diskin)
 {
-	char mline[9];
+	char mline[6];
 	int i = 0;
 	while (!feof(diskin))
 	{
-		fscanf(diskin, "%8[^\n]\n", mline); //scans the first 8 chars in a line
+		fscanf(diskin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
 		strcpy(disk_out_array[i], mline); //disk_out_array[i]
 		i++;
 	}
 	while (i < SIZE_OF_DISK)
 	{
-		strcpy(disk_out_array[i], "00000000"); // paddin with zeros all the empty memory disk_out_array[i]
+		strcpy(disk_out_array[i], "00000"); // paddin with zeros all the empty memory disk_out_array[i]
 		i++;
 	}
 }
@@ -501,18 +501,21 @@ void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
 	}
 }
 // gets a command line, and divides it to its components in com
-void  BuildCommand(char * command_line, Command * com)
+void BuildCommand(char * command_line, Command * com)
 {
 	strcpy(com->inst, command_line);
 
-	com->opcode = (int)strtol((char[]) { command_line[0], command_line[1], 0 }, NULL, 16);
-	com->rd = (int)strtol((char[]) { command_line[2], 0 }, NULL, 16);
-	com->rs = (int)strtol((char[]) { command_line[3], 0 }, NULL, 16);
-	com->rt = (int)strtol((char[]) { command_line[4], 0 }, NULL, 16);
-	com->imm = (int)strtol((char[]) { command_line[5], command_line[6], command_line[7], 0 }, NULL, 16);
-	if (com->imm >= 2048)
-		com->imm -= 4096; // if the number is greater then 2048, so the sign bit is on and we need to convert the num;
-
+	com->opcode = (int)strtol((char[]) {command_line[0], command_line[1]}, NULL, 16);
+	com->rd = (int)strtol((char[]) {command_line[2], 0 }, NULL, 16);
+	com->rs = (int)strtol((char[]) {command_line[3], 0 }, NULL, 16);
+	com->rt = (int)strtol((char[]) {command_line[4], 0 }, NULL, 16);
+	if((com->rs == 1) || (com->rt == 1)) // In case we got a command that uses an imm value
+	{
+		char immediate[6] = command_line + 6; // Point to the next word in file that holds the imm value
+		com->imm = (int)strtol(immediate, NULL, 16);
+		if(com->imm > 524287) // In case we got immediate > 2^19-1, sign bit is on and we need to handle a negative number
+			com->imm -= 1048576;
+	}
 }
 //this function write to led.txt file
 void leds(FILE * pleds)
@@ -533,10 +536,10 @@ void clk_counter()
 	(HexToInt2sComp(IOregister[8]) == HexToInt2sComp("ffffffff")) ? Int_to_Hex8(0, IOregister[8]) : Int_to_Hex8((HexToInt2sComp(IOregister[8]) + 1), IOregister[8]);
 }
 //according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
-// this is the hurt of the program, which incharge to execute the command, manage the clock, the timer and the disk
+// this is the heart of the program, which incharge to execute the command, manage the clock, the timer and the disk
 void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE *pdiskin)
 {
-
+	// FIXME - didn't go over the constants or function below until switch
 	TraceIt(com, ptrace); //write to trace before the command
 	int dec_num = 0;
 	char hex_num[9];
@@ -545,10 +548,14 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 0: //add
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) //$imm is in use
+			{
+				pc++; // immediate instructions advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
+			}
 			reg_arr[com->rd] = reg_arr[com->rs] + reg_arr[com->rt];
 		}
 		pc++;
@@ -556,70 +563,124 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 1: //sub
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
+			}
 			reg_arr[com->rd] = reg_arr[com->rs] - reg_arr[com->rt];
 		}
 		pc++;
 		break;
-	case 2: //and
+	case 2: //mul
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
+			}
+			reg_arr[com->rd] = reg_arr[com->rs] * reg_arr[com->rt];
+		}
+		pc++;
+		break;
+	case 3: //and
+		if (com->rd != 0 && com->rd != 1)
+		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
+			}
 			reg_arr[com->rd] = reg_arr[com->rs] & reg_arr[com->rt];
 		}
 		pc++;
 		break;
-	case 3: //or
+	case 4: //or
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
+			}
 			reg_arr[com->rd] = reg_arr[com->rs] | reg_arr[com->rt];
 		}
 		pc++;
 		break;
-	case 4://sll
+	case 5: //xor
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
+			}
+			reg_arr[com->rd] = reg_arr[com->rs] ^ reg_arr[com->rt];
+		}
+		pc++;
+		break;	
+	case 6://sll
+		if (com->rd != 0 && com->rd != 1)
+		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
+			}
 			reg_arr[com->rd] = reg_arr[com->rs] << reg_arr[com->rt];
 		}
 		pc++;
 		break;
-	case 5: //sra
+	case 7: //sra
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
-			reg_arr[com->rd] = reg_arr[com->rs] >> reg_arr[com->rt];
+			}
+			reg_arr[com->rd] = reg_arr[com->rs] >> reg_arr[com->rt]; // Shift is arithmetic by default for signed int
 		}
 		pc++;
 		break;
-	case 6: //srl
+	case 8: //srl
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
-			reg_arr[com->rd] = (reg_arr[com->rs] >> reg_arr[com->rt]) & 0x7fffffff;
+			}
+			reg_arr[com->rd] = (reg_arr[com->rs] >> reg_arr[com->rt]) & 0x7fffffff; // force MSB to be 0
 		}
 		pc++;
 		break;
-	case 7: //beq
+	case 9: //beq
 		if (reg_arr[com->rs] == reg_arr[com->rt])
 		{
 			if (com->rd == 1)
@@ -628,9 +689,8 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		}
 		else
 			pc++;
-
 		break;
-	case 8: //bne
+	case 10: //bne
 		if (reg_arr[com->rs] != reg_arr[com->rt])
 		{
 			if (com->rd == 1)
@@ -641,7 +701,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		else
 			pc++;
 		break;
-	case 9: //blt
+	case 11: //blt
 		if (reg_arr[com->rs] < reg_arr[com->rt])
 		{
 			if (com->rd == 1)
@@ -651,7 +711,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		else
 			pc++;
 		break;
-	case 10: //bjt
+	case 12: //bgt
 		if (reg_arr[com->rs] > reg_arr[com->rt])
 		{
 			if (com->rd == 1)
@@ -661,84 +721,93 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		else
 			pc++;
 		break;
-	case 11: //ble
+	case 13: //ble
 		if (reg_arr[com->rs] <= reg_arr[com->rt])
 		{
 			if (com->rd == 1)
 				reg_arr[com->rd] = com->imm;
 			pc = reg_arr[com->rd];
-
 		}
 		else
-		{
 			pc++;
-		}
 		break;
-	case 12: //bge
+	case 14: //bge
 		if (reg_arr[com->rs] >= reg_arr[com->rt])
 		{
 			if (com->rd == 1)
 				reg_arr[com->rd] = com->imm;
 			pc = reg_arr[com->rd];
 		}
-
 		else
 			pc++;
 		break;
-	case 13: //jal
-		reg_arr[15] = (pc + 1);
-		if (com->rd == 1)
+	case 15: //jal
+		if (com->rd == 1) // $imm is in use
+		{
+			pc++;
 			reg_arr[com->rd] = com->imm;
-		pc = reg_arr[com->rd];
+		}
+		reg_arr[com->rd] = (pc + 1);
+		pc = reg_arr[com->rs];
 		break;
-	case 14: //lw
+	case 16: //lw
 		if (com->rd != 0 && com->rd != 1)
 		{
+			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			{
+				pc++; // immediate instructions take advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
-			reg_arr[com->rd] = HexToInt2sComp(file_arr[(reg_arr[com->rs]) + reg_arr[com->rt]]);
+			}
+			reg_arr[com->rd] = HexToInt2sComp(file_arr[(reg_arr[com->rs]) + reg_arr[com->rt]]); //FIXME - should look into the function
 		}
 		pc++;
 		break;
-	case 15: //sw
-		//if ((com->rs + com->rt) != 0 && (com->rs + com->rt) != 1)
-		//{
+	case 17: //sw
+		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
+		{
+			pc++; // immediate instructions take advance 2 in pc
 		if (com->rd == 1)
 			reg_arr[com->rd] = com->imm;
+			if (com->rs == 1)
+				reg_arr[com->rs] = com->imm;
 		if (com->rt == 1)
 			reg_arr[com->rt] = com->imm;
-		if (com->rs == 1)
-			reg_arr[com->rs] = com->imm;
-
-		Int_to_Hex8(reg_arr[com->rd], hex_num_temp);
-
-		strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], hex_num_temp);
-		//}
+		}
+		Int_to_Hex8(reg_arr[com->rd], hex_num_temp); //FIXME - should look into the function
+		strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], hex_num_temp); // store back in memory
 		pc++;
 		break;
-	case 16: //reti
+	case 18: //reti
 		pc = HexToInt2sComp(IOregister[7]);
 		ready_to_irq = 1;
 		break;
-	case 17: //in
+	case 19: //in
+		if(com->rs == 1 || com->rt == 1) // $imm is in use
+		{
+			pc++; // immediate instructions take advance 2 in pc
 		if (com->rs == 1)
 			reg_arr[com->rs] = com->imm;
 		if (com->rt == 1)
 			reg_arr[com->rt] = com->imm;
+		}
 		reg_arr[com->rd] = HexToInt2sComp(IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
 		pc++;
-		hwregtrace(phwregtrace, 1, reg_arr[com->rs] + reg_arr[com->rt]);
-
+		hwregtrace(phwregtrace, 1, reg_arr[com->rs] + reg_arr[com->rt]); // FIXME - should look into the function
 		break;
-	case 18: //out
+	case 20: //out
+		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
+		{
+			pc++; // immediate instructions take advance 2 in pc
 		if (com->rd == 1)
 			reg_arr[com->rd] = com->imm;
 		if (com->rs == 1)
 			reg_arr[com->rs] = com->imm;
 		if (com->rt == 1)
 			reg_arr[com->rt] = com->imm;
+		}
 		Int_to_Hex8(reg_arr[com->rd], IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
 		hwregtrace(phwregtrace, 0, reg_arr[com->rs] + reg_arr[com->rt]);
 		switch (reg_arr[com->rs] + reg_arr[com->rt]) {
@@ -751,10 +820,11 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		case 14: // diskcmd
 			diskhandle(disk_out_array);
 			break;
+		// FIXME - here should appear monitor cases in the switch
 		}
 		pc++;
 		break;
-	case 19: //halt - write files and close them
+	case 21: //halt - write files and close them
 		clk_counter(); // after the execute of the command we update the clk
 		count_inst++;
 		fprintf(pcycles, "%d", count_inst);
