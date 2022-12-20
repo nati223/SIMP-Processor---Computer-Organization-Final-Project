@@ -551,10 +551,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) //$imm is in use
 			{
 				pc++; // immediate instructions advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = reg_arr[com->rs] + reg_arr[com->rt];
 		}
@@ -566,10 +566,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = reg_arr[com->rs] - reg_arr[com->rt];
 		}
@@ -581,10 +581,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = reg_arr[com->rs] * reg_arr[com->rt];
 		}
@@ -611,10 +611,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions take advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = reg_arr[com->rs] | reg_arr[com->rt];
 		}
@@ -641,10 +641,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions take advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = reg_arr[com->rs] << reg_arr[com->rt];
 		}
@@ -656,10 +656,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions take advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = reg_arr[com->rs] >> reg_arr[com->rt]; // Shift is arithmetic by default for signed int
 		}
@@ -671,10 +671,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions take advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = (reg_arr[com->rs] >> reg_arr[com->rt]) & 0x7fffffff; // force MSB to be 0
 		}
@@ -756,10 +756,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
 				pc++; // immediate instructions take advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+				if (com->rs == 1)
+					reg_arr[com->rs] = com->imm;
+				if (com->rt == 1)
+					reg_arr[com->rt] = com->imm;
 			}
 			reg_arr[com->rd] = HexToInt2sComp(file_arr[(reg_arr[com->rs]) + reg_arr[com->rt]]); //FIXME - should look into the function
 		}
@@ -769,12 +769,12 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
 		{
 			pc++; // immediate instructions take advance 2 in pc
-		if (com->rd == 1)
-			reg_arr[com->rd] = com->imm;
+			if (com->rd == 1)
+				reg_arr[com->rd] = com->imm;
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
-		if (com->rt == 1)
-			reg_arr[com->rt] = com->imm;
+			if (com->rt == 1)
+				reg_arr[com->rt] = com->imm;
 		}
 		Int_to_Hex8(reg_arr[com->rd], hex_num_temp); //FIXME - should look into the function
 		strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], hex_num_temp); // store back in memory
@@ -788,10 +788,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		if(com->rs == 1 || com->rt == 1) // $imm is in use
 		{
 			pc++; // immediate instructions take advance 2 in pc
-		if (com->rs == 1)
-			reg_arr[com->rs] = com->imm;
-		if (com->rt == 1)
-			reg_arr[com->rt] = com->imm;
+			if (com->rs == 1)
+				reg_arr[com->rs] = com->imm;
+			if (com->rt == 1)
+				reg_arr[com->rt] = com->imm;
 		}
 		reg_arr[com->rd] = HexToInt2sComp(IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
 		pc++;
@@ -801,12 +801,12 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
 		{
 			pc++; // immediate instructions take advance 2 in pc
-		if (com->rd == 1)
-			reg_arr[com->rd] = com->imm;
-		if (com->rs == 1)
-			reg_arr[com->rs] = com->imm;
-		if (com->rt == 1)
-			reg_arr[com->rt] = com->imm;
+			if (com->rd == 1)
+				reg_arr[com->rd] = com->imm;
+			if (com->rs == 1)
+				reg_arr[com->rs] = com->imm;
+			if (com->rt == 1)
+				reg_arr[com->rt] = com->imm;
 		}
 		Int_to_Hex8(reg_arr[com->rd], IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
 		hwregtrace(phwregtrace, 0, reg_arr[com->rs] + reg_arr[com->rt]);
