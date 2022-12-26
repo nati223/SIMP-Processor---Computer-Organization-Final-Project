@@ -23,11 +23,12 @@ char disk_out_array[SIZE_OF_DISK + 1][9]; //array of diskout, each line is 8 hex
 int reg_arr[16]; //array of all registers
 static int memin_array_size;
 static int pc = 0;
-static int count_inst = 0;
+//static int count_inst = 0;
+static int cycle_count = 0;
 static int is_irq1_run = 0;
 static int count_1024 = 0;
 int last_line_of_memout = SIZE;
-char IOregister[21][9] = { "00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"};
+char IOregister[21][9] = {"00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"};
 static int irq = 0;
 int ready_to_irq = 1;
 int irq2_interrupt_pc[SIZE] = { 0 };// array of all the pc which has irq2in interrupt
@@ -64,10 +65,9 @@ void DiskItOut(FILE * diskout);
 
 void TraceIt(Command * com, FILE * ptrace);
 
-void TimerHandle();
+void TimerHandle(int inc_by);
 
 void irq_status_check();
-
 
 void hwregtrace(FILE * phwregtrace, int rw, int reg_num);
 
@@ -77,11 +77,13 @@ void leds(FILE * pleds);
 
 void display(FILE * pdisplay);
 
-void clk_counter();
+void clk_counter(int inc_by);
 
-void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin);
+//void check_ovf(int *result, int a, int b, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
 
-void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin);
+void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
+
+void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
 
 //////////////////////////////////////////////////////////////
 
@@ -105,6 +107,7 @@ void read_Data_from_irq2in(FILE * irq2in)
 void count_to_1024()
 {
 	if (is_irq1_run)
+	{
 		if (count_1024 < 1024)
 			count_1024++;
 		else
@@ -115,6 +118,7 @@ void count_to_1024()
 			Int_to_Hex8(0, IOregister[17]);  //disk if free now
 			Int_to_Hex8(1, IOregister[4]);	//FIXME - irq1 status is 1, and now we know we have finished
 		}
+	}
 }
 
 //this function conatins the logic of the disk handle
@@ -528,13 +532,13 @@ void BuildCommand(char * command_line, Command * com)
 {
 	strcpy(com->inst, command_line);
 
-	com->opcode = (int)strtol((char[]) {command_line[0], command_line[1]}, NULL, 16);
+	com->opcode = (int)strtol((char[]) {command_line[0], command_line[1], 0}, NULL, 16);
 	com->rd = (int)strtol((char[]) {command_line[2], 0 }, NULL, 16);
 	com->rs = (int)strtol((char[]) {command_line[3], 0 }, NULL, 16);
 	com->rt = (int)strtol((char[]) {command_line[4], 0 }, NULL, 16);
 	if((com->rs == 1) || (com->rt == 1)) // In case we got a command that uses an imm value
 	{
-		char immediate[6] = command_line + 6; // Point to the next word in file that holds the imm value
+		char *immediate = file_arr[pc+1]; // Point to the next word in file that holds the imm value
 		com->imm = (int)strtol(immediate, NULL, 16);
 		if(com->imm > 524287) // In case we got immediate > 2^19-1, sign bit is on and we need to handle a negative number
 			com->imm -= 1048576;
@@ -556,14 +560,25 @@ void display(FILE * pdisplay)
 void clk_counter(int inc_by)
 {
 	if (HexToInt2sComp(IOregister[8]) + inc_by >= HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
-		Int_to_Hex8(0 + inc_by - 1, IOregister[8]);	
+		Int_to_Hex8(0 + inc_by - 1, IOregister[8]);
 	else
 		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + inc_by), IOregister[8]);	
 }
 
+//void check_ovf(int *result, int a, int b, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv)
+//{
+//	int ovf = 0;
+//	*result = a + b;
+//    if(a > 0 && b > 0 && *result < 0)
+//        ovf = 1;
+//    if(a < 0 && b < 0 && *result > 0)
+//        ovf = 1;
+//	
+//}
+
 //according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
 // this is the heart of the program, which incharge to execute the command, manage the clock, the timer and the disk
-void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE *pdiskin)
+void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv)
 {
 	// FIXME - didn't go over the constants or function below until switch
 	TraceIt(com, ptrace); //write to trace before the command
@@ -571,6 +586,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	int dec_num = 0;  
 	char hex_num[9];
 	char hex_num_temp[9] = "00000000";
+	int *result;
 	switch (com->opcode) { //cases for the opcode according to the assignment
 	case 0: //add
 		if (com->rd != 0 && com->rd != 1)
@@ -583,6 +599,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 				if (com->rt == 1)
 					reg_arr[com->rt] = com->imm;
 			}
+			//check_ovf(result, reg_arr[com->rs],reg_arr[com->rt], ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay, phwregtrace, pdiskin);
 			reg_arr[com->rd] = reg_arr[com->rs] + reg_arr[com->rt];
 		}
 		pc++;
@@ -769,10 +786,13 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			pc++;
 		break;
 	case 15: //jal
-		if (com->rd == 1) // $imm is in use
+		if (com->rd == 1 || com->rs == 1) // $imm is in use
 		{
 			pc++;
-			reg_arr[com->rd] = com->imm;
+			if(com->rd == 1)
+				reg_arr[com->rd] = com->imm;
+			if(com->rs == 1)
+				reg_arr[com->rs] = com->imm;
 		}
 		reg_arr[com->rd] = (pc + 1);
 		pc = reg_arr[com->rs];
@@ -853,9 +873,9 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		pc++;
 		break;
 	case 21: //halt - write files and close them
-		clk_counter(com); // after the execute of the command we update the clk
-		count_inst++;
-		fprintf(pcycles, "%d", count_inst);
+		clk_counter(inc_by); // after the execute of the command we update the clk
+		cycle_count++;
+		fprintf(pcycles, "%d", cycle_count);
 		RegItOut(pregout);
 		DiskItOut(pdiskout);
 		MemItOut(pmemout);
@@ -875,23 +895,23 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	//Determine by how much cycles the command took
 	if (com->rd == 1 || com->rs == 1 || com->rt == 1) // in case of I format inst.
 		inc_by++;
-	if (com->inst == 16 || com->inst == 17) // in case of use of lw or sw
+	if (com->opcode == 16 || com->opcode == 17) // in case of use of lw or sw
 		inc_by++;
 
 	clk_counter(inc_by); // after the execute of the command we update the clk
 	count_to_1024();
 	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
-	count_inst++; //count instructions
+	cycle_count+=inc_by; //count instructions
 }
 
 //takes command lines according to the pc and pass it to perfrom.
-void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE *pdiskin)
+void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE *pdiskin, FILE * pmonitor, FILE * pmonitoryuv)
 {
 	Command curr_com = { NULL, NULL, NULL, NULL, NULL, NULL };
 	while (pc < memin_array_size) //perform commands until halt or until end of file
 	{
 		BuildCommand(file_arr[pc], &curr_com); //takes the command according to the pc
-		Perform(&curr_com, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay, phwregtrace, pdiskin); //perform the command
+		Perform(&curr_com, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay, phwregtrace, pdiskin, pmonitor, pmonitoryuv); //perform the command
 		irq_status_check();
 		if (irq && ready_to_irq)
 		{
@@ -901,7 +921,6 @@ void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, F
 		}
 	}
 }
-
 
 int main(int argc, char *argv[])
 {
@@ -917,9 +936,9 @@ int main(int argc, char *argv[])
 	FillArray(memin);
 	fclose(memin);
 	// simulator
-	InstByLine(trace, cycles, memout, regout, leds, diskout, display, hwregtrace, diskin);
+	InstByLine(trace, cycles, memout, regout, leds, diskout, display, hwregtrace, diskin, monitor, monitoryuv);
 	// write and close files if no halt
-	fprintf(cycles, "%d", /*count_inst*/ HexToInt2sComp(IOregister[8]));
+	fprintf(cycles, "%d", cycle_count /*HexToInt2sComp(IOregister[8])*/);
 	DiskItOut(diskout);
 	RegItOut(regout);
 	MemItOut(memout);
