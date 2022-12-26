@@ -112,11 +112,10 @@ void count_to_1024()
 			count_1024 = 0;
 			is_irq1_run = 0;
 			Int_to_Hex8(0, IOregister[14]);  //diskcmd is now 0
-			Int_to_Hex8(0, IOregister[17]);
-			Int_to_Hex8(1, IOregister[4]);
+			Int_to_Hex8(0, IOregister[17]);  //disk if free now
+			Int_to_Hex8(1, IOregister[4]);	//FIXME - irq1 status is 1, and now we know we have finished
 		}
 }
-
 
 //this function conatins the logic of the disk handle
 void diskhandle(char diskout[][9])
@@ -134,7 +133,7 @@ void diskhandle(char diskout[][9])
 		case 1: //read sector
 			Int_to_Hex8(1, IOregister[17]);  //Assign disk status to 1
 			is_irq1_run = 1; // we get irq1 interupt
-			for (k = sector; (k < sector + 128); k++)
+			for (k = sector; k < sector + 128; k++)
 			{
 				strcpy(file_arr[mem_address], diskout[k]); // read diskin into memin
 				if (mem_address + 1 == SIZE)
@@ -156,7 +155,6 @@ void diskhandle(char diskout[][9])
 			}
 			break;
 		}
-
 	}
 }
 
@@ -238,11 +236,11 @@ int HexToInt2sComp(char * h) {
 	int len = strlen(h);
 	for (i = 0; i < len; i++)
 	{
-		res += HexCharToInt(h[len - 1 - i]) * (1 << (4 * i)); // change char by char from right to left, and shift it left 4 times (2^4) 
+		res += HexCharToInt(h[len - 1 - i]) * (1 << (4 * i)); // change char by char from right to left, and shift it left 4*i times (2^4i) 
 	}
 	if ((len < 8) && (res & (1 << (len * 4 - 1)))) // if len is less than 8 and the msb is 1, we want to sign extend the number
 	{
-		res |= -1 * (1 << (len * 4)); // or of the number with: 1 from the 7th char until the msb of res, then zeros till lsb. -1 for the sign.
+		res |= -1 * (1 << (len * 4)); // perform bitwise or with the mask of 8-len times 1's and len time 0's
 	}
 
 	return res;
@@ -305,11 +303,11 @@ void DiskItOut(FILE *diskout)
 	for (i = 0; i <= SIZE_OF_DISK + 1; i++) //go over file_arr and write it to memout
 		fprintf(diskout, "%s\n", disk_out_array[i]);
 }
-//write to trace.txt
+//write to trace.txt, documents the state of all regs and PC before execution of the instruction in line
 void TraceIt(Command  * com, FILE * ptrace)
 {
-	char pch[9];
-	char inst[9];
+	char pch[4]; // PC in hexa digits
+	char inst[6];
 	char r0[9];
 	char r1[9];
 	char r2[9];
@@ -332,11 +330,15 @@ void TraceIt(Command  * com, FILE * ptrace)
 	char hex_num[9];
 
 	Int_to_Hex8(pc, hex_num);
-	strcpy(pch, hex_num);
+	strcpy(pch, slice_str(hex_num,5,7));
 
 	Int_to_Hex8(reg_arr[0], hex_num);
 	strcpy(r0, hex_num);
-	Int_to_Hex8(HexToInt2sComp(slice_str(inst, 5, 7)), hex_num);
+	
+	if((com->rt == 1) || (com->rs == 1) || (com->rd == 1))
+		Int_to_Hex8(com->imm, hex_num);
+	else
+		Int_to_Hex8(0,hex_num);
 	strcpy(r1, hex_num);
 
 	Int_to_Hex8(reg_arr[2], hex_num);
@@ -385,32 +387,33 @@ void TraceIt(Command  * com, FILE * ptrace)
 }
 
 //contain the logic of the timer
-void TimerHandle()
+void TimerHandle(int inc_by)
 {
 	if (HexToInt2sComp(IOregister[11]) == 1)
-		if (HexToInt2sComp(IOregister[12]) < HexToInt2sComp(IOregister[13])) //if timercurrent is less than timermax
-			Int_to_Hex8((HexToInt2sComp(IOregister[12]) + 1), IOregister[12]);
+		if (HexToInt2sComp(IOregister[12]) + inc_by <= HexToInt2sComp(IOregister[13])) //if timercurrent is less than timermax
+			Int_to_Hex8((HexToInt2sComp(IOregister[12]) + inc_by), IOregister[12]);
 
-	if ((HexToInt2sComp(IOregister[12]) == HexToInt2sComp(IOregister[13])) && ((HexToInt2sComp(IOregister[13])) != 0))
+	if (((HexToInt2sComp(IOregister[12]) + inc_by) > HexToInt2sComp(IOregister[13])) && ((HexToInt2sComp(IOregister[13])) != 0))
 	{
-		Int_to_Hex8(1, IOregister[3]); //if timecurrent is equel to timermax then irq0status is 1
-		Int_to_Hex8(0, IOregister[12]); //if timecurrent is equel to timermax then timecurrnt is 0
+		Int_to_Hex8(1, IOregister[3]); //if timecurrent is equal to timermax then irq0status is 1
+		Int_to_Hex8(0 + inc_by - 1, IOregister[12]); //when timecurrent is equal to timermax, we set it to 0 and start counting again
 	}
 }
+
 // check if there is an interrupt
 void irq_status_check()
 {
-
-	if (HexToInt2sComp(IOregister[1]) && HexToInt2sComp(IOregister[4]) && ready_to_irq) {
+	if (HexToInt2sComp(IOregister[1]) && HexToInt2sComp(IOregister[4]) && ready_to_irq) 
 		is_irq1_run = 1; // we get irq1 interupt
-	}
-	if ((irq2_interrupt_pc[irq2_current_index] == HexToInt2sComp(IOregister[8]) - 1) && ready_to_irq) {
+	
+	if ((irq2_interrupt_pc[irq2_current_index] == HexToInt2sComp(IOregister[8]) - 1) && ready_to_irq) // Means we got to a cycle where irq2 is triggered
+	{
 		Int_to_Hex8(1, IOregister[5]); // this if triggerd the irq2status to 1 when there is intruppt
 		irq2_current_index++;
 	}
+
 	irq = ((HexToInt2sComp(IOregister[0]) && HexToInt2sComp(IOregister[3])) || ((HexToInt2sComp(IOregister[1])) && HexToInt2sComp(IOregister[4])) || (HexToInt2sComp(IOregister[2]) && HexToInt2sComp(IOregister[5]))) ? 1 : 0;
 	Int_to_Hex8(0, IOregister[5]);
-
 }
 
 //this function write to hwregtrace.txt file
@@ -421,9 +424,11 @@ void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
 	case 0:
 		strcpy(name, "irq0enable");
 		break;
+
 	case 1:
 		strcpy(name, "irq1enable");
 		break;
+
 	case 2:
 		strcpy(name, "irq2enable");
 		break;
@@ -450,7 +455,6 @@ void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
 
 	case 8:
 		strcpy(name, "clks");
-
 		break;
 
 	case 9:
@@ -488,7 +492,26 @@ void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
 	case 17:
 		strcpy(name, "diskstatus");
 		break;
+	
+	case 18:
+		strcpy(name, "reserved");
+		break;
 
+	case 19:
+		strcpy(name, "reserved");
+		break;
+
+	case 20:
+		strcpy(name, "monitoraddr");
+		break;
+
+	case 21:
+		strcpy(name, "monitordata");
+		break;
+
+	case 22:
+		strcpy(name, "monitorcmd");
+		break;
 	}
 
 	if (rw) //in command
@@ -529,19 +552,23 @@ void display(FILE * pdisplay)
 
 }
 
-//increment the clock every cycle, cyclic clk
-void clk_counter()
+//increment the clock according to the instruction type
+void clk_counter(int inc_by)
 {
-
-	(HexToInt2sComp(IOregister[8]) == HexToInt2sComp("ffffffff")) ? Int_to_Hex8(0, IOregister[8]) : Int_to_Hex8((HexToInt2sComp(IOregister[8]) + 1), IOregister[8]);
+	if (HexToInt2sComp(IOregister[8]) + inc_by >= HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
+		Int_to_Hex8(0 + inc_by - 1, IOregister[8]);	
+	else
+		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + inc_by), IOregister[8]);	
 }
+
 //according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
 // this is the heart of the program, which incharge to execute the command, manage the clock, the timer and the disk
 void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE *pdiskin)
 {
 	// FIXME - didn't go over the constants or function below until switch
 	TraceIt(com, ptrace); //write to trace before the command
-	int dec_num = 0;
+	int inc_by = 1;
+	int dec_num = 0;  
 	char hex_num[9];
 	char hex_num_temp[9] = "00000000";
 	switch (com->opcode) { //cases for the opcode according to the assignment
@@ -795,7 +822,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		}
 		reg_arr[com->rd] = HexToInt2sComp(IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
 		pc++;
-		hwregtrace(phwregtrace, 1, reg_arr[com->rs] + reg_arr[com->rt]); // FIXME - should look into the function
+		hwregtrace(phwregtrace, 1, reg_arr[com->rs] + reg_arr[com->rt]);
 		break;
 	case 20: //out
 		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
@@ -810,7 +837,8 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		}
 		Int_to_Hex8(reg_arr[com->rd], IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
 		hwregtrace(phwregtrace, 0, reg_arr[com->rs] + reg_arr[com->rt]);
-		switch (reg_arr[com->rs] + reg_arr[com->rt]) {
+		switch (reg_arr[com->rs] + reg_arr[com->rt]) 
+		{
 		case 9: //leds
 			leds(pleds);
 			break;
@@ -818,14 +846,14 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			display(pdisplay);
 			break;
 		case 14: // diskcmd
-			diskhandle(disk_out_array);
+			diskhandle(disk_out_array); // FIXME - go over this function
 			break;
 		// FIXME - here should appear monitor cases in the switch
 		}
 		pc++;
 		break;
 	case 21: //halt - write files and close them
-		clk_counter(); // after the execute of the command we update the clk
+		clk_counter(com); // after the execute of the command we update the clk
 		count_inst++;
 		fprintf(pcycles, "%d", count_inst);
 		RegItOut(pregout);
@@ -844,9 +872,15 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		break;
 	}
 
-	clk_counter(); // after the execute of the command we update the clk
+	//Determine by how much cycles the command took
+	if (com->rd == 1 || com->rs == 1 || com->rt == 1) // in case of I format inst.
+		inc_by++;
+	if (com->inst == 16 || com->inst == 17) // in case of use of lw or sw
+		inc_by++;
+
+	clk_counter(inc_by); // after the execute of the command we update the clk
 	count_to_1024();
-	TimerHandle();// evey command we update the timer via the function timer handle
+	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
 	count_inst++; //count instructions
 }
 
@@ -871,8 +905,7 @@ void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, F
 
 int main(int argc, char *argv[])
 {
-	FILE *memin = fopen(argv[1], "r"), *diskin = fopen(argv[2], "r"), *irq2in = fopen(argv[3], "r"), *memout = fopen(argv[4], "w"), *regout = fopen(argv[5], "w"),
-		*trace = fopen(argv[6], "w"), *hwregtrace = fopen(argv[7], "w"), *cycles = fopen(argv[8], "w"), *leds = fopen(argv[9], "w"), *display = fopen(argv[10], "w"), *diskout = fopen(argv[11], "w");
+	FILE *memin = fopen(argv[1], "r"), *diskin = fopen(argv[2], "r"), *irq2in = fopen(argv[3], "r"), *memout = fopen(argv[4], "w"), *regout = fopen(argv[5], "w"), *trace = fopen(argv[6], "w"), *hwregtrace = fopen(argv[7], "w"), *cycles = fopen(argv[8], "w"), *leds = fopen(argv[9], "w"), *display = fopen(argv[10], "w"), *diskout = fopen(argv[11], "w"), *monitor = fopen(argv[12], "w"), *monitoryuv = fopen(argv[13], "w");
 	if (memin == NULL || irq2in == NULL || diskin == NULL || memout == NULL || regout == NULL || trace == NULL || cycles == NULL || hwregtrace == NULL || leds == NULL || display == NULL || diskout == NULL)
 	{
 		printf("One of the files could not be opened \n ");
@@ -886,7 +919,7 @@ int main(int argc, char *argv[])
 	// simulator
 	InstByLine(trace, cycles, memout, regout, leds, diskout, display, hwregtrace, diskin);
 	// write and close files if no halt
-	fprintf(cycles, "%d", count_inst /*HexToInt2sComp(IOregister[8])*/);
+	fprintf(cycles, "%d", /*count_inst*/ HexToInt2sComp(IOregister[8]));
 	DiskItOut(diskout);
 	RegItOut(regout);
 	MemItOut(memout);
@@ -899,5 +932,7 @@ int main(int argc, char *argv[])
 	fclose(diskin);
 	fclose(diskout);
 	fclose(cycles);
+	fclose(monitor);
+	fclose(monitoryuv);
 	exit(0);
 }
