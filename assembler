@@ -1,1 +1,230 @@
 
+
+
+#define _CRT_SECURE_NO_WARNINGS
+/////declaretion of the relevant libreries/////
+#include <stdio.h> // for IO
+#include <math.h> // for aritmetics
+#include <string.h> // for string function
+
+
+/////declaretion of the permenent parameters/////
+#define MAX_ROW_LEN 300 // the max line size of the input file
+#define MAX_LABEL_LEN 50 // the max lable size
+#define MEM_SIZE 4096 // max num of rows in the main memory
+#define Len_OF_ROW 20 // len of each row
+
+
+/////structs declaration/////
+
+// difened a struct that hold label information
+typedef struct Label
+{
+	char name[MAX_LABEL_LEN+1];
+	int address;
+}Label;
+
+// difened a struct that hold the infprmation about a line
+typedef struct LINE
+{
+	char opcode[4]; // the opcode reprisent by 4 letters max
+	char rd[5]; // the registers reprisent by 5 letters max
+	char rs[5]; // the registers reprisent by 5 letters max
+	char rt[5]; // the registers reprisent by 5 letters max
+	int has_label; // equal to 1 if the opcode requaire label and 0 if not
+	char label[MAX_LABEL_LEN+1]; // the name of the label if exists
+	int has_imm; // equal to 1 if the opcode requaire immidiate number (Itype) and 0 if not (Rtype)
+	int imm_val; // the value of the imm if exists
+	int pc_counter; // 1 if Rtype and 2 if Itype
+}LINE;
+
+// defined a struct that hold data for the .word instruction
+typedef struct Word
+{
+	int address;
+	int data;
+}Word;
+
+
+/////functions declaration/////
+/// functions that convert the name of the filed to the hexe reprisentation
+// return char because in hexedecimel some numbers represents by letters
+char OpCode_to_hexe(char opcode); // convert opcode name to its hexe representation
+char Register_to_hexe(char reg); // convert register name to its hexe representation. relevent to rd,rs and rt
+///
+//function that check the type of the line
+int has_label(char line[]); // check if the line has label. return 1 if true and 0 if false
+char no_spaces(char line[]); // return string without spaces
+int find_type(char line[]); // check what the type of instruction of the line. 1 fot Rtype and 2 for Itype
+
+ // functions that extract information from the line
+Label* GetLabel(char* line); // extract the label
+
+int main(int argc, char* argv[]) {
+	// part A - initialize the input and output files
+	// part B - read program.asm file
+	// part C - write to memin.txt
+	// part D - free memory
+	 
+	
+	/////////// part A - initialize the input and output files ///////////
+	FILE* asm_program; // variable program.asm is poiter to type FILE*, this is the input file
+	FILE* memin; // variable program.asm is poiter to type FILE*, this is the output file
+	asm_program = fopen(argv[1], "r"); // open in order to read
+	memin = fopen(argv[2], "w"); // open in order to write
+	if (asm_program == NULL || memin == NULL) { // check if the file open secessfuly
+		printf("File could not be open\n"); // if not, print an error
+		return 1;
+	}
+
+	/////////// part B - read program.asm file ///////////
+	// initialize structs
+	Word Word_array[MEM_SIZE];
+	Label Label_array[MEM_SIZE]; // why we initiate like this
+	
+	// initialize parameters
+	int PC = 0;
+	int Word_num_of_instruction = 0;
+	char line[MAX_ROW_LEN];
+	int Label_array_index = 0;
+
+	for (int i = 0; i < MEM_SIZE; i++) { // initiate the word array that contains 4096 word to -1
+		Word_array[i].address = -1;
+	}
+	// loop to fill the label array
+
+	while ((NULL != fgets(line, MAX_ROW_LEN, asm_program))) // keep reading the file line by line until the end of the file
+	{ 
+	// read one line from the file the pointer asm_program points
+	// line is the string reprisent a line in the file
+		// check the type of the line 
+		if (1 == has_label(line)) {
+			// the line has a label
+			// we will make a new label struct with the name of the label and its address.
+			strcpy(Label_array[Label_array_index].name, GetLabel(line)->name);
+			Label_array[Label_array_index].address = PC;
+			Label_array_index++;
+			//char name[MAX_LABEL_LEN] = no_spaces(strtok(line, ":")); // extract the label from the line and erase spaces
+			//Label name = {"0",0}; // initiate new Label struct 
+			GetLabel(line)->address = PC; // update theaddress of the label acordding to the pc value
+
+			// check if the line has instructions as well 
+			if (strtok(line, ",") == NULL) { // check if the line has only a label 
+				// there is no more charecters after the label => the line includes only label, pc stay the same
+				continue;
+			}
+			else { // there is instruction in addition to the label in the line
+				// check the type of instructions and updates pc accordingly.
+				PC += find_type(line); //  +1 for Rtype and +2 for Itype
+			}
+		}
+		else { // the line has no label
+			// check if the line has instructions
+			if (strtok(line, ",") != NULL) {
+				// check the type of instructions and updates pc accordingly.
+				PC += find_type(line); //  +1 for Rtype and +2 for Itype
+			}
+			else { // the line has no instructions
+				// check if the line has .word instraction
+				if (strstr(line, ".word") != NULL) { 
+					//save the address we want to change with the intruction fo later
+					Word Word_num_of_instruction;
+					strtok(line, ".word");
+					int i = 0;
+					while (line[i] == " ") { // erase all the spaces before address
+						strtok(line, " ");
+						i++;
+					}
+					char addresss = strtok(line, " "); // gives address after we cleaned all spaces in the begining of the word and end the word acording to the first space after
+				}
+				else { // has no label, no instructions (Rtype, Itype or .word) => empty line
+					continue; // PC isnt change
+				}
+
+			}
+
+
+		}
+
+	}
+
+	// initialization before the second loop the go throw the files
+	rewind(asm_program); // set the file "asm_program" position to the begining and start reading it again
+	PC = 0; 
+	int counter = 0;
+
+	// the second loop, we will read the "asm_program" file and write to "memin" file
+	while ((NULL != fgets(line, MAX_ROW_LEN, asm_program))) // keep reading the file line by line until the end of the file
+	{
+
+	}
+
+
+	
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+////// functions//////
+//the function gets a line and check if the line has label. return 1 if true and 0 if false
+int has_label(char line[]) {
+	if (strtok(line, ":") != NULL) {
+		return 1; // ther is a label
+	}
+	else
+		return 0; // there isnt a label
+}
+// the function gets a line and return the line without spaces
+char no_spaces(char line[]) {
+	int i = 0;
+	int j = 0;
+	char line_no_space[MAX_ROW_LEN];
+	while (line[i] != '\0') {
+		if (line[i] == " ") {
+			continue; // ignore spaces
+		}
+		else {
+			line_no_space[j] = line[i];
+			j++;
+		}
+	}
+	line_no_space[i] = '\0';
+	return 	line_no_space;
+}
+
+//the function gets a pointer to a line and return the type of instruction - Rtype (return 1) or Itype (return 2)
+int find_type(char line[]) {
+	if (strstr(line, "$imm") != NULL) {
+		return 2; // Itype instruction. written by 2 rows
+	}
+	else
+		return 1; // Rtype instruction. written by 1 row
+}
+//the function gets a pounter to a line and create a label according to the line
+Label* GetLabel(char *line)
+{
+	int i;
+	Label label = { "0",0 };
+
+	for (i = 0; i < MAX_ROW_LEN; i++)
+	{
+		if (line[i] == ':')
+			break;
+	}
+	line[i] = '\0';
+	strcpy(label.name, line);
+	return &label;
+}
+
+
