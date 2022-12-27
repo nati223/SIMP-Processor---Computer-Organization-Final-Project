@@ -79,8 +79,6 @@ void display(FILE * pdisplay);
 
 void clk_counter(int inc_by);
 
-//void check_ovf(int *result, int a, int b, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
-
 void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
 
 void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
@@ -410,10 +408,14 @@ void irq_status_check()
 	if (HexToInt2sComp(IOregister[1]) && HexToInt2sComp(IOregister[4]) && ready_to_irq) 
 		is_irq1_run = 1; // we get irq1 interupt
 	
-	if ((irq2_interrupt_pc[irq2_current_index] == HexToInt2sComp(IOregister[8]) - 1) && ready_to_irq) // Means we got to a cycle where irq2 is triggered
+	if (((irq2_interrupt_pc[irq2_current_index] <= HexToInt2sComp(IOregister[8]) - 1) && ready_to_irq) && (irq2_interrupt_pc[irq2_current_index] != -1)) // Means we got to a cycle where irq2 is triggered
 	{
-		Int_to_Hex8(1, IOregister[5]); // this if triggerd the irq2status to 1 when there is intruppt
-		irq2_current_index++;
+		if(irq2_interrupt_pc[irq2_current_index] != -1)
+		{
+			//printf("got irq2 interrupt at %d\n", irq2_interrupt_pc[irq2_current_index]);
+			Int_to_Hex8(1, IOregister[5]); // this if triggerd the irq2status to 1 when there is intruppt
+			irq2_current_index++;
+		}
 	}
 
 	irq = ((HexToInt2sComp(IOregister[0]) && HexToInt2sComp(IOregister[3])) || ((HexToInt2sComp(IOregister[1])) && HexToInt2sComp(IOregister[4])) || (HexToInt2sComp(IOregister[2]) && HexToInt2sComp(IOregister[5]))) ? 1 : 0;
@@ -536,7 +538,7 @@ void BuildCommand(char * command_line, Command * com)
 	com->rd = (int)strtol((char[]) {command_line[2], 0 }, NULL, 16);
 	com->rs = (int)strtol((char[]) {command_line[3], 0 }, NULL, 16);
 	com->rt = (int)strtol((char[]) {command_line[4], 0 }, NULL, 16);
-	if((com->rs == 1) || (com->rt == 1)) // In case we got a command that uses an imm value
+	if((com->rs == 1) || (com->rt == 1) || (com->rd)) // In case we got a command that uses an imm value
 	{
 		char *immediate = file_arr[pc+1]; // Point to the next word in file that holds the imm value
 		com->imm = (int)strtol(immediate, NULL, 16);
@@ -559,22 +561,11 @@ void display(FILE * pdisplay)
 //increment the clock according to the instruction type
 void clk_counter(int inc_by)
 {
-	if (HexToInt2sComp(IOregister[8]) + inc_by >= HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
+	if (HexToInt2sComp(IOregister[8]) + inc_by <= HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
 		Int_to_Hex8(0 + inc_by - 1, IOregister[8]);
 	else
-		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + inc_by), IOregister[8]);	
+		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + inc_by), IOregister[8]);
 }
-
-//void check_ovf(int *result, int a, int b, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv)
-//{
-//	int ovf = 0;
-//	*result = a + b;
-//    if(a > 0 && b > 0 && *result < 0)
-//        ovf = 1;
-//    if(a < 0 && b < 0 && *result > 0)
-//        ovf = 1;
-//	
-//}
 
 //according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
 // this is the heart of the program, which incharge to execute the command, manage the clock, the timer and the disk
@@ -599,7 +590,6 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 				if (com->rt == 1)
 					reg_arr[com->rt] = com->imm;
 			}
-			//check_ovf(result, reg_arr[com->rs],reg_arr[com->rt], ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay, phwregtrace, pdiskin);
 			reg_arr[com->rd] = reg_arr[com->rs] + reg_arr[com->rt];
 		}
 		pc++;
@@ -756,32 +746,35 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			pc++;
 		break;
 	case 12: //bgt
-		if (reg_arr[com->rs] > reg_arr[com->rt])
+		if (com->rd == 1)
 		{
-			if (com->rd == 1)
-				reg_arr[com->rd] = com->imm;
-			pc = reg_arr[com->rd];
+			reg_arr[com->rd] = com->imm;
+			pc++;
 		}
+		if (reg_arr[com->rs] > reg_arr[com->rt])
+			pc = reg_arr[com->rd];
 		else
 			pc++;
 		break;
 	case 13: //ble
-		if (reg_arr[com->rs] <= reg_arr[com->rt])
+		if (com->rd == 1)
 		{
-			if (com->rd == 1)
-				reg_arr[com->rd] = com->imm;
-			pc = reg_arr[com->rd];
+			reg_arr[com->rd] = com->imm;
+			pc++;	
 		}
+		if (reg_arr[com->rs] <= reg_arr[com->rt])
+			pc = reg_arr[com->rd];
 		else
 			pc++;
 		break;
 	case 14: //bge
-		if (reg_arr[com->rs] >= reg_arr[com->rt])
+		if (com->rd == 1)
 		{
-			if (com->rd == 1)
-				reg_arr[com->rd] = com->imm;
-			pc = reg_arr[com->rd];
+			reg_arr[com->rd] = com->imm;
+			pc++;
 		}
+		if (reg_arr[com->rs] >= reg_arr[com->rt])
+			pc = reg_arr[com->rd];
 		else
 			pc++;
 		break;
@@ -823,8 +816,12 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 			if (com->rt == 1)
 				reg_arr[com->rt] = com->imm;
 		}
-		Int_to_Hex8(reg_arr[com->rd], hex_num_temp); //FIXME - should look into the function
-		strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], hex_num_temp); // store back in memory
+		Int_to_Hex8(reg_arr[com->rd], hex_num_temp);
+		char *store;
+		store = slice_str(hex_num_temp,3,8);
+		//strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], hex_num_temp); // store back in memory
+		strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], store); // store back in memory
+		printf("%s\n", file_arr[(reg_arr[com->rs] + reg_arr[com->rt])]);
 		pc++;
 		break;
 	case 18: //reti
@@ -902,6 +899,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	count_to_1024();
 	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
 	cycle_count+=inc_by; //count instructions
+	fprintf(pcycles, "%d\n", cycle_count /*HexToInt2sComp(IOregister[8])*/);
 }
 
 //takes command lines according to the pc and pass it to perfrom.
@@ -932,6 +930,7 @@ int main(int argc, char *argv[])
 	}
 	FillArrayOfdiskout(diskin); //copy diskin into the array that represent diskout 
 	read_Data_from_irq2in(irq2in); //read data and then close irq2in
+	int i = 0;
 	// build file array
 	FillArray(memin);
 	fclose(memin);
