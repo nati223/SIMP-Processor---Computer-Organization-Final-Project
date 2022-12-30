@@ -77,7 +77,7 @@ void leds(FILE * pleds);
 
 void display(FILE * pdisplay);
 
-void clk_counter(int inc_by);
+void clk_counter();
 
 void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
 
@@ -468,7 +468,7 @@ void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
 		break;
 
 	case 10:
-		strcpy(name, "display");
+		strcpy(name, "display7seg");
 		break;
 
 	case 11:
@@ -559,12 +559,12 @@ void display(FILE * pdisplay)
 }
 
 //increment the clock according to the instruction type
-void clk_counter(int inc_by)
+void clk_counter()
 {
-	if (HexToInt2sComp(IOregister[8]) + inc_by <= HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
-		Int_to_Hex8(0 + inc_by - 1, IOregister[8]);
+	if (HexToInt2sComp(IOregister[8]) == HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
+		Int_to_Hex8(0, IOregister[8]);
 	else
-		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + inc_by), IOregister[8]);
+		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + 1), IOregister[8]);
 }
 
 //according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
@@ -573,6 +573,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 {
 	// FIXME - didn't go over the constants or function below until switch
 	TraceIt(com, ptrace); //write to trace before the command
+	//Determine by how much cycles the command took
 	int inc_by = 1;
 	int dec_num = 0;  
 	char hex_num[9];
@@ -584,6 +585,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) //$imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -599,6 +601,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -614,6 +617,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -629,6 +633,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -644,6 +649,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -659,6 +665,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -674,6 +681,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -689,6 +697,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -704,6 +713,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -718,7 +728,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		if (reg_arr[com->rs] == reg_arr[com->rt])
 		{
 			if (com->rd == 1)
+			{
+				clk_counter();
 				reg_arr[com->rd] = com->imm;
+			}
 			pc = reg_arr[com->rd];
 		}
 		else
@@ -728,7 +741,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		if (reg_arr[com->rs] != reg_arr[com->rt])
 		{
 			if (com->rd == 1)
+			{
+				clk_counter();
 				reg_arr[com->rd] = com->imm;
+			}
 			pc = reg_arr[com->rd];
 
 		}
@@ -739,7 +755,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		if (reg_arr[com->rs] < reg_arr[com->rt])
 		{
 			if (com->rd == 1)
+			{
+				clk_counter();
 				reg_arr[com->rd] = com->imm;
+			}
 			pc = reg_arr[com->rd];
 		}
 		else
@@ -748,6 +767,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 12: //bgt
 		if (com->rd == 1)
 		{
+			clk_counter();
 			reg_arr[com->rd] = com->imm;
 			pc++;
 		}
@@ -759,6 +779,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 13: //ble
 		if (com->rd == 1)
 		{
+			clk_counter();
 			reg_arr[com->rd] = com->imm;
 			pc++;	
 		}
@@ -770,6 +791,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 14: //bge
 		if (com->rd == 1)
 		{
+			clk_counter();
 			reg_arr[com->rd] = com->imm;
 			pc++;
 		}
@@ -781,6 +803,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 15: //jal
 		if (com->rd == 1 || com->rs == 1) // $imm is in use
 		{
+			clk_counter();
 			pc++;
 			if(com->rd == 1)
 				reg_arr[com->rd] = com->imm;
@@ -791,10 +814,12 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		pc = reg_arr[com->rs];
 		break;
 	case 16: //lw
+		clk_counter();
 		if (com->rd != 0 && com->rd != 1)
 		{
 			if(com->rs == 1 || com->rt == 1) // $imm is in use
 			{
+				clk_counter();
 				pc++; // immediate instructions take advance 2 in pc
 				if (com->rs == 1)
 					reg_arr[com->rs] = com->imm;
@@ -806,8 +831,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		pc++;
 		break;
 	case 17: //sw
+		clk_counter();
 		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
 		{
+			clk_counter();
 			pc++; // immediate instructions take advance 2 in pc
 			if (com->rd == 1)
 				reg_arr[com->rd] = com->imm;
@@ -831,6 +858,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 19: //in
 		if(com->rs == 1 || com->rt == 1) // $imm is in use
 		{
+			clk_counter();
 			pc++; // immediate instructions take advance 2 in pc
 			if (com->rs == 1)
 				reg_arr[com->rs] = com->imm;
@@ -844,6 +872,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 	case 20: //out
 		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
 		{
+			clk_counter();
 			pc++; // immediate instructions take advance 2 in pc
 			if (com->rd == 1)
 				reg_arr[com->rd] = com->imm;
@@ -870,7 +899,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		pc++;
 		break;
 	case 21: //halt - write files and close them
-		clk_counter(inc_by); // after the execute of the command we update the clk
+		clk_counter(); // after the execute of the command we update the clk
 		cycle_count++;
 		fprintf(pcycles, "%d", cycle_count);
 		RegItOut(pregout);
@@ -889,16 +918,14 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		break;
 	}
 
-	//Determine by how much cycles the command took
-	if (com->rd == 1 || com->rs == 1 || com->rt == 1) // in case of I format inst.
-		inc_by++;
-	if (com->opcode == 16 || com->opcode == 17) // in case of use of lw or sw
-		inc_by++;
-
-	clk_counter(inc_by); // after the execute of the command we update the clk
+	//if (com->rd == 1 || com->rs == 1 || com->rt == 1) // in case of I format inst.
+		//inc_by++;
+	//if (com->opcode == 16 || com->opcode == 17) // in case of use of lw or sw
+		//inc_by++;
+	cycle_count+=inc_by; //count instructions
+	clk_counter(); // after the execute of the command we update the clk
 	count_to_1024();
 	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
-	cycle_count+=inc_by; //count instructions
 	fprintf(pcycles, "%d\n", cycle_count /*HexToInt2sComp(IOregister[8])*/);
 }
 
