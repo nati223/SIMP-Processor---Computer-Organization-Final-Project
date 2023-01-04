@@ -28,7 +28,9 @@ static int cycle_count = 0;
 static int is_irq1_run = 0;
 static int count_1024 = 0;
 int last_line_of_memout = SIZE;
-char IOregister[21][9] = {"00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"};
+static int last_line_of_monitor = 0;
+char IOregister[23][9] = {"00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"};
+char monitor_arr[65536][9];
 static int irq = 0;
 int ready_to_irq = 1;
 int irq2_interrupt_pc[SIZE] = { 0 };// array of all the pc which has irq2in interrupt
@@ -76,6 +78,12 @@ void BuildCommand(char * command_line, Command * com);
 void leds(FILE * pleds);
 
 void display(FILE * pdisplay);
+
+void FillMonitorArray();
+
+void update_monitor();
+
+void MonitorOut(FILE * pmonitor, FILE * pmonitoryuv);
 
 void clk_counter();
 
@@ -558,6 +566,34 @@ void display(FILE * pdisplay)
 
 }
 
+void FillMonitorArray()
+{
+	for(int i=0; i< 65536; i++)
+	{
+		strcpy(monitor_arr[i], "00000000");
+	}
+}
+
+void update_monitor()
+{
+	int pixel_addr = HexToInt2sComp(IOregister[20]);
+	
+	if(last_line_of_monitor < pixel_addr)
+		last_line_of_monitor = pixel_addr + 1;
+
+	strcpy(monitor_arr[pixel_addr], IOregister[21]);
+}
+
+void MonitorOut(FILE * pmonitor, FILE * pmonitoryuv)
+{
+	printf("I'm here\n");
+	for(int i=0;i<last_line_of_monitor;i++)
+	{
+		fprintf(pmonitor, "%s\n", slice_str(monitor_arr[i],6,8));	
+		fprintf(pmonitoryuv, "%s\n", slice_str(monitor_arr[i],6,8));	
+	}
+}
+
 //increment the clock according to the instruction type
 void clk_counter()
 {
@@ -894,6 +930,10 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		case 14: // diskcmd
 			diskhandle(disk_out_array); // FIXME - go over this function
 			break;
+		case 22:
+			if(HexToInt2sComp(IOregister[22]) == 1)
+				update_monitor();
+			break;
 		// FIXME - here should appear monitor cases in the switch
 		}
 		pc++;
@@ -905,6 +945,7 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		RegItOut(pregout);
 		DiskItOut(pdiskout);
 		MemItOut(pmemout);
+		MonitorOut(pmonitor, pmonitoryuv);
 		fclose(phwregtrace);
 		fclose(pleds);
 		fclose(pdisplay);
@@ -914,6 +955,8 @@ void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE 
 		fclose(pregout);
 		fclose(ptrace);
 		fclose(pcycles);
+		fclose(pmonitor);
+		fclose(pmonitoryuv);
 		exit(0);
 		break;
 	}
@@ -957,6 +1000,7 @@ int main(int argc, char *argv[])
 	}
 	FillArrayOfdiskout(diskin); //copy diskin into the array that represent diskout 
 	read_Data_from_irq2in(irq2in); //read data and then close irq2in
+	FillMonitorArray();
 	int i = 0;
 	// build file array
 	FillArray(memin);
@@ -968,6 +1012,7 @@ int main(int argc, char *argv[])
 	DiskItOut(diskout);
 	RegItOut(regout);
 	MemItOut(memout);
+	MonitorOut(monitor, monitoryuv);
 	fclose(memout);
 	fclose(regout);
 	fclose(trace);
