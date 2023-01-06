@@ -2,10 +2,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 #include <math.h>
 
-//Struct for command
-typedef struct cmd {
+//Struct for commands fetched from memin.txt
+typedef struct Command {
 	char inst[6];//contains the line as String, 5 hexa digits + '\0'
 	int opcode;
 	int rd;
@@ -16,136 +17,147 @@ typedef struct cmd {
 
 ////////////////////////////////////////////////////////////////
 //Global Parameters:
-#define SIZE 4096 //2^12
-#define SIZE_OF_DISK 16384 //128*128
-char file_arr[SIZE + 1][6]; //array of memin
-char disk_out_array[SIZE_OF_DISK + 1][9]; //array of diskout, each line is 8 hexas + '\0' in the end
-int reg_arr[16]; //array of all registers
-static int memin_array_size;
+#define SIZE 4096
+#define DISK_SIZE 16384 //128 sectors * 128 lines
+#define MONITOR_SIZE 65536 // 256*256 pixels
+char instruction_arr[SIZE + 1][6]; //array of based on memin.txt
 static int pc = 0;
-//static int count_inst = 0;
-static int cycle_count = 0;
-static int is_irq1_run = 0;
-static int count_1024 = 0;
-int last_line_of_memout = SIZE;
-static int last_line_of_monitor = 0;
-char IOregister[23][9] = {"00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"};
-char monitor_arr[65536][9];
+static int instruction_arr_size;
+int inst_reg_arr[16]; //array of the registers that are used in instruction execution
+char io_registers[23][9] = {"00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"}; // IO registers
+char hard_disk_arr[DISK_SIZE + 1][6]; //array of diskout, each line is 5 hexas + '\0' in the end
 static int irq = 0;
-int ready_to_irq = 1;
-int irq2_interrupt_pc[SIZE] = { 0 };// array of all the pc which has irq2in interrupt
-int irq2_current_index = 0;
+int irq_ready = 1;
+static int in_irq1 = 0;
+static int irq1_cycle_counter = 0;
+int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
+static int irq2_arr_cur_position = 0;
 int reti_waiting = 0; //this flag indicates us if we are in the middle of an interrupt
-////////////////////////////////////////////////////////////////
+char monitor_arr[MONITOR_SIZE + 1][9];
 
+////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////
 
-////////////////////////////////////////////////////////////////
-//decleration of all the functions in the program
-void read_Data_from_irq2in(FILE * irq2in);
+// Auxiliary Functions //
 
-void count_to_1024();
-
-void diskhandle(char diskout[][9]);
-
-char * slice_str(char str[], int start, int end);
+char * SliceStr(char str[], int start, int end);
 
 int HexCharToInt(char h);
 
-void Int_to_Hex8(int dec_num, char hex_num[9]);
+void IntToHex8(int dec_num, char hex_num[9]);
 
 int HexToInt2sComp(char * h);
 
-void FillArray(FILE * memin);
+// Initialization Functions //
 
-void FillArrayOfdiskout(FILE * diskin);
+void FillDiskoutArr(FILE * pdiskin);
 
-void RegItOut(FILE * pregout);
+void FillInstArr(FILE * pmemin);
 
-void MemItOut(FILE * pmemout);
+void FillIrq2inArr(FILE * pirq2in);
 
-void DiskItOut(FILE * diskout);
+void FillMonitorArr();
 
-void TraceIt(Command * com, FILE * ptrace);
+void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in);
+
+// Main Runtime Functions //
+
+void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
+
+void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
+
+void PropagateClock();
+
+int CheckForOverflow(int opcode, int rs, int rt);
+
+void TraceWrite(Command * cmd, FILE * ptrace);
+
+void Count1024();
+
+void HardDiskRoutine(char diskout[][6]);
+
+void UpdateMonitorArr();
+
+void CheckIrqStatus();
+
+void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num);
+
+void CreateCommand(char * command_line, Command * cmd);
+
+void LedsWrite(FILE * pleds);
 
 void TimerHandle(int inc_by);
 
-void irq_status_check();
+void DisplayWrite(FILE * pdisplay7seg);
 
-void hwregtrace(FILE * phwregtrace, int rw, int reg_num);
+// End Of Program Functions //
 
-void BuildCommand(char * command_line, Command * com);
+void RegOutWrite(FILE * pregout);
 
-void leds(FILE * pleds);
+void MemOutWrite(FILE * pmemout);
 
-void display(FILE * pdisplay);
+void DiskOutWrite(FILE * pdiskout);
 
-void FillMonitorArray();
+void MonitorWrite(FILE * pmonitor);
 
-void update_monitor();
+void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
 
-void MonitorOut(FILE * pmonitor, FILE * pmonitoryuv);
-
-void clk_counter();
-
-void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
-
-void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv);
 
 //////////////////////////////////////////////////////////////
 
 //read data from irq2in to array irq2_interrupt_pc and close the irq2in file.
-void read_Data_from_irq2in(FILE * irq2in)
+void FillIrq2inArr(FILE * irq2in)
 {
 	for (int k = 0; k < SIZE; k++)
-		irq2_interrupt_pc[k] = -1;
+		irq2_interrupt_cycles[k] = -1;
 	char mline[6];
 	int i = 0;
 	while (!feof(irq2in))
 	{
 		fgets(mline, 10, irq2in); //scans the first 8 chars in a line - FIXME: should make this line clearer
-		irq2_interrupt_pc[i] = atoi(mline);
+		irq2_interrupt_cycles[i] = atoi(mline);
 		i++;
 	}
 	fclose(irq2in);
 }
 
 // if we get disk read/write command, we start counting to 1024 before the next command.
-void count_to_1024()
+void Count1024()
 {
-	if (is_irq1_run)
+	if (in_irq1)
 	{
-		if (count_1024 < 1024)
-			count_1024++;
+		if (irq1_cycle_counter < 1024)
+			irq1_cycle_counter++;
 		else
 		{
-			count_1024 = 0;
-			is_irq1_run = 0;
-			Int_to_Hex8(0, IOregister[14]);  //diskcmd is now 0
-			Int_to_Hex8(0, IOregister[17]);  //disk if free now
-			Int_to_Hex8(1, IOregister[4]);	//FIXME - irq1 status is 1, and now we know we have finished
+			irq1_cycle_counter = 0;
+			in_irq1 = 0;
+			IntToHex8(0, io_registers[14]);  //diskcmd is now 0
+			IntToHex8(0, io_registers[17]);  //disk if free now
+			IntToHex8(1, io_registers[4]);	//FIXME - irq1 status is 1, and now we know we have finished
 		}
 	}
 }
 
 //this function conatins the logic of the disk handle
-void diskhandle(char diskout[][9])
+void HardDiskRoutine(char diskout[][6])
 {
-	if (!HexToInt2sComp(IOregister[17])) // The disk is free to read/write
+	if (!HexToInt2sComp(io_registers[17])) // The disk is free to read/write
 	{
 		int k = 0;
 		char temp[20];
-		int sector = HexToInt2sComp(IOregister[15]) * 128;
-		int mem_address = HexToInt2sComp(IOregister[16]);
-		char str[9];
-		switch (HexToInt2sComp(IOregister[14])) {
+		int sector = HexToInt2sComp(io_registers[15]) * 128;
+		int mem_address = HexToInt2sComp(io_registers[16]);
+		//char str[9]; not in use
+		switch (HexToInt2sComp(io_registers[14])) {
 		case 0: //no command
 			break;
 		case 1: //read sector
-			Int_to_Hex8(1, IOregister[17]);  //Assign disk status to 1
-			is_irq1_run = 1; // we get irq1 interupt
+			IntToHex8(1, io_registers[17]);  //Assign disk status to 1
+			in_irq1 = 1; // we get irq1 interupt
 			for (k = sector; k < sector + 128; k++)
 			{
-				strcpy(file_arr[mem_address], diskout[k]); // read diskin into memin
+				strcpy(instruction_arr[mem_address], diskout[k]); // read diskin into memin
 				if (mem_address + 1 == SIZE)
 					mem_address = 0;
 				else
@@ -153,11 +165,11 @@ void diskhandle(char diskout[][9])
 			}
 			break;
 		case 2: //write command
-			is_irq1_run = 1; // we get irq1 interupt
-			Int_to_Hex8(1, IOregister[17]);  //Assign disk status to 1
+			in_irq1 = 1; // we get irq1 interupt
+			IntToHex8(1, io_registers[17]);  //Assign disk status to 1
 			for (k = sector; k < sector + 128; k++)
 			{
-				strcpy(diskout[k], file_arr[mem_address]);
+				strcpy(diskout[k], instruction_arr[mem_address]);
 				if (mem_address + 1 == SIZE)
 					mem_address = 0;
 				else
@@ -169,7 +181,7 @@ void diskhandle(char diskout[][9])
 }
 
 //slice string str from start location to end
-char * slice_str(char str[], int start, int end)
+char * SliceStr(char str[], int start, int end)
 {
 	static char temp[9];
 	int i = 0;
@@ -232,7 +244,7 @@ int HexCharToInt(char h) {
 }
 
 //convert int to Hex8
-void Int_to_Hex8(int dec_num, char hex_num[9])
+void IntToHex8(int dec_num, char hex_num[9])
 {
 	if (dec_num < 0) //if dec_num is negative, add 2^32 to it
 		dec_num = dec_num + 4294967296; // dec_num = dec_num + 2^32
@@ -256,65 +268,77 @@ int HexToInt2sComp(char * h) {
 	return res;
 }
 
-//copy memin to array char "file_arr" 
-void FillArray(FILE * memin)
+void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
 {
-	char mline[6];
+	FillDiskoutArr(pdiskin); 
+	FillIrq2inArr(pirq2in);
+	FillInstArr(pmemin);
+	FillMonitorArr();
+}
+
+//copy memin to array char "instruction_arr" 
+void FillInstArr(FILE * pmemin)
+{
+	char line[6];
 	int i = 0;
-	while (!feof(memin))
+	while (!feof(pmemin))
 	{
-		fscanf(memin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
-		strcpy(file_arr[i], mline); //fills array[i]
+		fscanf(pmemin, "%5[^\n]\n", line); //scans the first 5 chars in a line
+		strcpy(instruction_arr[i], line); //fills array[i]
 		i++;
 	}
-	memin_array_size = i;
+	instruction_arr_size = i;
 	while (i < SIZE)
 	{
-		strcpy(file_arr[i], "00000"); // paddin with zeros all the empty memory fills array[i]
+		strcpy(instruction_arr[i], "00000"); // paddin with zeros all the empty memory fills array[i]
 		i++;
 	}
+	fclose(pmemin);
 }
+
 //copy the content of diksin into array disk_out_array
-void FillArrayOfdiskout(FILE * diskin)
+void FillDiskoutArr(FILE * pdiskin)
 {
 	char mline[6];
 	int i = 0;
-	while (!feof(diskin))
+	while (!feof(pdiskin))
 	{
-		fscanf(diskin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
-		strcpy(disk_out_array[i], mline); //disk_out_array[i]
+		fscanf(pdiskin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
+		strcpy(hard_disk_arr[i], mline); //disk_out_array[i]
 		i++;
 	}
-	while (i < SIZE_OF_DISK)
+	while (i < DISK_SIZE)
 	{
-		strcpy(disk_out_array[i], "00000"); // paddin with zeros all the empty memory disk_out_array[i]
+		strcpy(hard_disk_arr[i], "00000"); // paddin with zeros all the empty memory disk_out_array[i]
 		i++;
 	}
+	fclose(pdiskin);
 }
+
 //write to regout.txt
-void RegItOut(FILE *pregout)
+void RegOutWrite(FILE *pregout)
 {
 	int i = 0;
 	for (i = 2; i < 16; i++) //go over reg_arr and print it to regout
-		fprintf(pregout, "%08X\n", reg_arr[i]);
+		fprintf(pregout, "%08X\n", inst_reg_arr[i]);
 }
 
 //write to memout.txt
-void MemItOut(FILE *pmemout)
+void MemOutWrite(FILE *pmemout)
 {
 	int i = 0;
-	for (i = 0; i <= last_line_of_memout; i++) //go over file_arr and write it to memout
-		fprintf(pmemout, "%s\n", file_arr[i]);
+	for (i = 0; i <= SIZE; i++) //go over instruction_arr and write it to memout
+		fprintf(pmemout, "%s\n", instruction_arr[i]);
 }
 //write to diskout.txt
-void DiskItOut(FILE *diskout)
+void DiskOutWrite(FILE *diskout)
 {
 	int i = 0;
-	for (i = 0; i <= SIZE_OF_DISK + 1; i++) //go over file_arr and write it to memout
-		fprintf(diskout, "%s\n", disk_out_array[i]);
+	for (i = 0; i <= DISK_SIZE + 1; i++) //go over instruction_arr and write it to memout
+		fprintf(diskout, "%s\n", hard_disk_arr[i]);
 }
 //write to trace.txt, documents the state of all regs and PC before execution of the instruction in line
-void TraceIt(Command  * com, FILE * ptrace)
+void TraceWrite(Command  * com, FILE * ptrace)
 {
 	char pch[4]; // PC in hexa digits
 	char inst[6];
@@ -339,58 +363,58 @@ void TraceIt(Command  * com, FILE * ptrace)
 
 	char hex_num[9];
 
-	Int_to_Hex8(pc, hex_num);
-	strcpy(pch, slice_str(hex_num,5,7));
+	IntToHex8(pc, hex_num);
+	strcpy(pch, SliceStr(hex_num,5,7));
 
-	Int_to_Hex8(reg_arr[0], hex_num);
+	IntToHex8(inst_reg_arr[0], hex_num);
 	strcpy(r0, hex_num);
 	
 	if((com->rt == 1) || (com->rs == 1) || (com->rd == 1))
-		Int_to_Hex8(com->imm, hex_num);
+		IntToHex8(com->imm, hex_num);
 	else
-		Int_to_Hex8(0,hex_num);
+		IntToHex8(0,hex_num);
 	strcpy(r1, hex_num);
 
-	Int_to_Hex8(reg_arr[2], hex_num);
+	IntToHex8(inst_reg_arr[2], hex_num);
 	strcpy(r2, hex_num);
 
-	Int_to_Hex8(reg_arr[3], hex_num);
+	IntToHex8(inst_reg_arr[3], hex_num);
 	strcpy(r3, hex_num);
 
-	Int_to_Hex8(reg_arr[4], hex_num);
+	IntToHex8(inst_reg_arr[4], hex_num);
 	strcpy(r4, hex_num);
 
-	Int_to_Hex8(reg_arr[5], hex_num);
+	IntToHex8(inst_reg_arr[5], hex_num);
 	strcpy(r5, hex_num);
 
-	Int_to_Hex8(reg_arr[6], hex_num);
+	IntToHex8(inst_reg_arr[6], hex_num);
 	strcpy(r6, hex_num);
 
-	Int_to_Hex8(reg_arr[7], hex_num);
+	IntToHex8(inst_reg_arr[7], hex_num);
 	strcpy(r7, hex_num);
 
-	Int_to_Hex8(reg_arr[8], hex_num);
+	IntToHex8(inst_reg_arr[8], hex_num);
 	strcpy(r8, hex_num);
 
-	Int_to_Hex8(reg_arr[9], hex_num);
+	IntToHex8(inst_reg_arr[9], hex_num);
 	strcpy(r9, hex_num);
 
-	Int_to_Hex8(reg_arr[10], hex_num);
+	IntToHex8(inst_reg_arr[10], hex_num);
 	strcpy(r10, hex_num);
 
-	Int_to_Hex8(reg_arr[11], hex_num);
+	IntToHex8(inst_reg_arr[11], hex_num);
 	strcpy(r11, hex_num);
 
-	Int_to_Hex8(reg_arr[12], hex_num);
+	IntToHex8(inst_reg_arr[12], hex_num);
 	strcpy(r12, hex_num);
 
-	Int_to_Hex8(reg_arr[13], hex_num);
+	IntToHex8(inst_reg_arr[13], hex_num);
 	strcpy(r13, hex_num);
 
-	Int_to_Hex8(reg_arr[14], hex_num);
+	IntToHex8(inst_reg_arr[14], hex_num);
 	strcpy(r14, hex_num);
 
-	Int_to_Hex8(reg_arr[15], hex_num);
+	IntToHex8(inst_reg_arr[15], hex_num);
 	strcpy(r15, hex_num);
 
 	fprintf(ptrace, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n", pch, inst, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15);
@@ -399,39 +423,39 @@ void TraceIt(Command  * com, FILE * ptrace)
 //contain the logic of the timer
 void TimerHandle(int inc_by)
 {
-	if (HexToInt2sComp(IOregister[11]) == 1)
-		if (HexToInt2sComp(IOregister[12]) + inc_by <= HexToInt2sComp(IOregister[13])) //if timercurrent is less than timermax
-			Int_to_Hex8((HexToInt2sComp(IOregister[12]) + inc_by), IOregister[12]);
+	if (HexToInt2sComp(io_registers[11]) == 1)
+		if (HexToInt2sComp(io_registers[12]) + inc_by <= HexToInt2sComp(io_registers[13])) //if timercurrent is less than timermax
+			IntToHex8((HexToInt2sComp(io_registers[12]) + inc_by), io_registers[12]);
 
-	if (((HexToInt2sComp(IOregister[12]) + inc_by) > HexToInt2sComp(IOregister[13])) && ((HexToInt2sComp(IOregister[13])) != 0))
+	if (((HexToInt2sComp(io_registers[12]) + inc_by) > HexToInt2sComp(io_registers[13])) && ((HexToInt2sComp(io_registers[13])) != 0))
 	{
-		Int_to_Hex8(1, IOregister[3]); //if timecurrent is equal to timermax then irq0status is 1
-		Int_to_Hex8(0 + inc_by - 1, IOregister[12]); //when timecurrent is equal to timermax, we set it to 0 and start counting again
+		IntToHex8(1, io_registers[3]); //if timecurrent is equal to timermax then irq0status is 1
+		IntToHex8(0 + inc_by - 1, io_registers[12]); //when timecurrent is equal to timermax, we set it to 0 and start counting again
 	}
 }
 
 // check if there is an interrupt
-void irq_status_check()
+void CheckIrqStatus()
 {
-	if (HexToInt2sComp(IOregister[1]) && HexToInt2sComp(IOregister[4]) && ready_to_irq) 
-		is_irq1_run = 1; // we get irq1 interupt
+	if (HexToInt2sComp(io_registers[1]) && HexToInt2sComp(io_registers[4]) && irq_ready) 
+		in_irq1 = 1; // we get irq1 interupt
 	
-	if (((irq2_interrupt_pc[irq2_current_index] <= HexToInt2sComp(IOregister[8]) - 1) && ready_to_irq) && (irq2_interrupt_pc[irq2_current_index] != -1)) // Means we got to a cycle where irq2 is triggered
+	if (((irq2_interrupt_cycles[irq2_arr_cur_position] <= HexToInt2sComp(io_registers[8]) - 1) && irq_ready) && (irq2_interrupt_cycles[irq2_arr_cur_position] != -1)) // Means we got to a cycle where irq2 is triggered
 	{
-		if(irq2_interrupt_pc[irq2_current_index] != -1)
+		if(irq2_interrupt_cycles[irq2_arr_cur_position] != -1)
 		{
 			//printf("got irq2 interrupt at %d\n", irq2_interrupt_pc[irq2_current_index]);
-			Int_to_Hex8(1, IOregister[5]); // this if triggerd the irq2status to 1 when there is intruppt
-			irq2_current_index++;
+			IntToHex8(1, io_registers[5]); // this if triggerd the irq2status to 1 when there is intruppt
+			irq2_arr_cur_position++;
 		}
 	}
 
-	irq = ((HexToInt2sComp(IOregister[0]) && HexToInt2sComp(IOregister[3])) || ((HexToInt2sComp(IOregister[1])) && HexToInt2sComp(IOregister[4])) || (HexToInt2sComp(IOregister[2]) && HexToInt2sComp(IOregister[5]))) ? 1 : 0;
-	Int_to_Hex8(0, IOregister[5]);
+	irq = ((HexToInt2sComp(io_registers[0]) && HexToInt2sComp(io_registers[3])) || ((HexToInt2sComp(io_registers[1])) && HexToInt2sComp(io_registers[4])) || (HexToInt2sComp(io_registers[2]) && HexToInt2sComp(io_registers[5]))) ? 1 : 0;
+	IntToHex8(0, io_registers[5]);
 }
 
 //this function write to hwregtrace.txt file
-void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
+void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num)
 {
 	char name[50] = "";
 	switch (reg_num) {
@@ -530,15 +554,15 @@ void hwregtrace(FILE * phwregtrace, int rw, int reg_num)
 
 	if (rw) //in command
 	{
-		fprintf(phwregtrace, "%d READ %s %s\n", HexToInt2sComp(IOregister[8]), name, IOregister[reg_num]);
+		fprintf(phwregtrace, "%d READ %s %s\n", HexToInt2sComp(io_registers[8]), name, io_registers[reg_num]);
 	}
 	else
 	{
-		fprintf(phwregtrace, "%d WRITE %s %s\n", HexToInt2sComp(IOregister[8]), name, IOregister[reg_num]);
+		fprintf(phwregtrace, "%d WRITE %s %s\n", HexToInt2sComp(io_registers[8]), name, io_registers[reg_num]);
 	}
 }
 // gets a command line, and divides it to its components in com
-void BuildCommand(char * command_line, Command * com)
+void CreateCommand(char * command_line, Command * com)
 {
 	strcpy(com->inst, command_line);
 
@@ -548,25 +572,24 @@ void BuildCommand(char * command_line, Command * com)
 	com->rt = (int)strtol((char[]) {command_line[4], 0 }, NULL, 16);
 	if((com->rs == 1) || (com->rt == 1) || (com->rd)) // In case we got a command that uses an imm value
 	{
-		char *immediate = file_arr[pc+1]; // Point to the next word in file that holds the imm value
+		char *immediate = instruction_arr[pc+1]; // Point to the next word in file that holds the imm value
 		com->imm = (int)strtol(immediate, NULL, 16);
 		if(com->imm > 524287) // In case we got immediate > 2^19-1, sign bit is on and we need to handle a negative number
 			com->imm -= 1048576;
 	}
 }
 //this function write to led.txt file
-void leds(FILE * pleds)
+void LedsWrite(FILE * pleds)
 {
-	fprintf(pleds, "%d %s\n", HexToInt2sComp(IOregister[8]), IOregister[9]);
+	fprintf(pleds, "%d %s\n", HexToInt2sComp(io_registers[8]), io_registers[9]);
 }
-//this function write to display.txt file
-void display(FILE * pdisplay)
+//this function write to display7seg.txt file
+void DisplayWrite(FILE * pdisplay7seg)
 {
-	fprintf(pdisplay, "%d %s\n", HexToInt2sComp(IOregister[8]), IOregister[10]);
-
+	fprintf(pdisplay7seg, "%d %s\n", HexToInt2sComp(io_registers[8]), io_registers[10]);
 }
 
-void FillMonitorArray()
+void FillMonitorArr()
 {
 	for(int i=0; i< 65536; i++)
 	{
@@ -574,455 +597,472 @@ void FillMonitorArray()
 	}
 }
 
-void update_monitor()
+void UpdateMonitorArr()
 {
-	int pixel_addr = HexToInt2sComp(IOregister[20]);
-	
-	if(last_line_of_monitor < pixel_addr)
-		last_line_of_monitor = pixel_addr + 1;
-
-	strcpy(monitor_arr[pixel_addr], IOregister[21]);
+	int pixel_addr = HexToInt2sComp(io_registers[20]);
+	strcpy(monitor_arr[pixel_addr], io_registers[21]);
 }
 
-void MonitorOut(FILE * pmonitor, FILE * pmonitoryuv)
+void MonitorWrite(FILE * pmonitor)
 {
-	printf("I'm here\n");
-	for(int i=0;i<last_line_of_monitor;i++)
+	for(int i=0;i<MONITOR_SIZE;i++)
 	{
-		fprintf(pmonitor, "%s\n", slice_str(monitor_arr[i],6,8));	
-		fprintf(pmonitoryuv, "%s\n", slice_str(monitor_arr[i],6,8));	
+		fprintf(pmonitor, "%s\n", SliceStr(monitor_arr[i],6,8));	
 	}
 }
 
 //increment the clock according to the instruction type
-void clk_counter()
+void PropagateClock()
 {
-	if (HexToInt2sComp(IOregister[8]) == HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
-		Int_to_Hex8(0, IOregister[8]);
+	if (HexToInt2sComp(io_registers[8]) == HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
+		IntToHex8(0, io_registers[8]);
 	else
-		Int_to_Hex8((HexToInt2sComp(IOregister[8]) + 1), IOregister[8]);
+		IntToHex8((HexToInt2sComp(io_registers[8]) + 1), io_registers[8]);
 }
 
 //according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
 // this is the heart of the program, which incharge to execute the command, manage the clock, the timer and the disk
-void Perform(Command * com, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pdiskin, FILE * pmonitor, FILE * pmonitoryuv)
+void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
 	// FIXME - didn't go over the constants or function below until switch
-	TraceIt(com, ptrace); //write to trace before the command
+	TraceWrite(cmd, ptrace); //write to trace before the command
 	//Determine by how much cycles the command took
 	int inc_by = 1;
 	int dec_num = 0;  
 	char hex_num[9];
 	char hex_num_temp[9] = "00000000";
 	int *result;
-	switch (com->opcode) { //cases for the opcode according to the assignment
+	switch (cmd->opcode) { //cases for the opcode according to the assignment
 	case 0: //add
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) //$imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) //$imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] + reg_arr[com->rt];
+			if(CheckForOverflow(cmd->rs, cmd->rt, cmd->opcode))
+				EndProcedure(ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor);
+			else
+				inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;
 	case 1: //sub
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] - reg_arr[com->rt];
+			if(CheckForOverflow(cmd->rs, cmd->rt, cmd->opcode))
+				EndProcedure(ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor);
+			else
+				inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] - inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;
 	case 2: //mul
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] * reg_arr[com->rt];
+			if(CheckForOverflow(cmd->rs, cmd->rt, cmd->opcode))
+				EndProcedure(ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor);
+			else
+				inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] * inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;
 	case 3: //and
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] & reg_arr[com->rt];
+			inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] & inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;
 	case 4: //or
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] | reg_arr[com->rt];
+			inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] | inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;
 	case 5: //xor
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] ^ reg_arr[com->rt];
+			inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] ^ inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;	
 	case 6://sll
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] << reg_arr[com->rt];
+			inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] << inst_reg_arr[cmd->rt];
 		}
 		pc++;
 		break;
 	case 7: //sra
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = reg_arr[com->rs] >> reg_arr[com->rt]; // Shift is arithmetic by default for signed int
+			inst_reg_arr[cmd->rd] = inst_reg_arr[cmd->rs] >> inst_reg_arr[cmd->rt]; // Shift is arithmetic by default for signed int
 		}
 		pc++;
 		break;
 	case 8: //srl
-		if (com->rd != 0 && com->rd != 1)
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = (reg_arr[com->rs] >> reg_arr[com->rt]) & 0x7fffffff; // force MSB to be 0
+			inst_reg_arr[cmd->rd] = (inst_reg_arr[cmd->rs] >> inst_reg_arr[cmd->rt]) & 0x7fffffff; // force MSB to be 0
 		}
 		pc++;
 		break;
 	case 9: //beq
-		if (reg_arr[com->rs] == reg_arr[com->rt])
+		if (inst_reg_arr[cmd->rs] == inst_reg_arr[cmd->rt])
 		{
-			if (com->rd == 1)
+			if (cmd->rd == 1)
 			{
-				clk_counter();
-				reg_arr[com->rd] = com->imm;
+				PropagateClock();
+				inst_reg_arr[cmd->rd] = cmd->imm;
 			}
-			pc = reg_arr[com->rd];
+			pc = inst_reg_arr[cmd->rd];
 		}
 		else
 			pc++;
 		break;
 	case 10: //bne
-		if (reg_arr[com->rs] != reg_arr[com->rt])
+		if (inst_reg_arr[cmd->rs] != inst_reg_arr[cmd->rt])
 		{
-			if (com->rd == 1)
+			if (cmd->rd == 1)
 			{
-				clk_counter();
-				reg_arr[com->rd] = com->imm;
+				PropagateClock();
+				inst_reg_arr[cmd->rd] = cmd->imm;
 			}
-			pc = reg_arr[com->rd];
+			pc = inst_reg_arr[cmd->rd];
 
 		}
 		else
 			pc++;
 		break;
 	case 11: //blt
-		if (reg_arr[com->rs] < reg_arr[com->rt])
+		if (inst_reg_arr[cmd->rs] < inst_reg_arr[cmd->rt])
 		{
-			if (com->rd == 1)
+			if (cmd->rd == 1)
 			{
-				clk_counter();
-				reg_arr[com->rd] = com->imm;
+				PropagateClock();
+				inst_reg_arr[cmd->rd] = cmd->imm;
 			}
-			pc = reg_arr[com->rd];
+			pc = inst_reg_arr[cmd->rd];
 		}
 		else
 			pc++;
 		break;
 	case 12: //bgt
-		if (com->rd == 1)
+		if (cmd->rd == 1)
 		{
-			clk_counter();
-			reg_arr[com->rd] = com->imm;
+			PropagateClock();
+			inst_reg_arr[cmd->rd] = cmd->imm;
 			pc++;
 		}
-		if (reg_arr[com->rs] > reg_arr[com->rt])
-			pc = reg_arr[com->rd];
+		if (inst_reg_arr[cmd->rs] > inst_reg_arr[cmd->rt])
+			pc = inst_reg_arr[cmd->rd];
 		else
 			pc++;
 		break;
 	case 13: //ble
-		if (com->rd == 1)
+		if (cmd->rd == 1)
 		{
-			clk_counter();
-			reg_arr[com->rd] = com->imm;
+			PropagateClock();
+			inst_reg_arr[cmd->rd] = cmd->imm;
 			pc++;	
 		}
-		if (reg_arr[com->rs] <= reg_arr[com->rt])
-			pc = reg_arr[com->rd];
+		if (inst_reg_arr[cmd->rs] <= inst_reg_arr[cmd->rt])
+			pc = inst_reg_arr[cmd->rd];
 		else
 			pc++;
 		break;
 	case 14: //bge
-		if (com->rd == 1)
+		if (cmd->rd == 1)
 		{
-			clk_counter();
-			reg_arr[com->rd] = com->imm;
+			PropagateClock();
+			inst_reg_arr[cmd->rd] = cmd->imm;
 			pc++;
 		}
-		if (reg_arr[com->rs] >= reg_arr[com->rt])
-			pc = reg_arr[com->rd];
+		if (inst_reg_arr[cmd->rs] >= inst_reg_arr[cmd->rt])
+			pc = inst_reg_arr[cmd->rd];
 		else
 			pc++;
 		break;
 	case 15: //jal
-		if (com->rd == 1 || com->rs == 1) // $imm is in use
+		if (cmd->rd == 1 || cmd->rs == 1) // $imm is in use
 		{
-			clk_counter();
+			PropagateClock();
 			pc++;
-			if(com->rd == 1)
-				reg_arr[com->rd] = com->imm;
-			if(com->rs == 1)
-				reg_arr[com->rs] = com->imm;
+			if(cmd->rd == 1)
+				inst_reg_arr[cmd->rd] = cmd->imm;
+			if(cmd->rs == 1)
+				inst_reg_arr[cmd->rs] = cmd->imm;
 		}
-		reg_arr[com->rd] = (pc + 1);
-		pc = reg_arr[com->rs];
+		inst_reg_arr[cmd->rd] = (pc + 1);
+		pc = inst_reg_arr[cmd->rs];
 		break;
 	case 16: //lw
-		clk_counter();
-		if (com->rd != 0 && com->rd != 1)
+		PropagateClock();
+		if (cmd->rd != 0 && cmd->rd != 1)
 		{
-			if(com->rs == 1 || com->rt == 1) // $imm is in use
+			if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 			{
-				clk_counter();
+				PropagateClock();
 				pc++; // immediate instructions take advance 2 in pc
-				if (com->rs == 1)
-					reg_arr[com->rs] = com->imm;
-				if (com->rt == 1)
-					reg_arr[com->rt] = com->imm;
+				if (cmd->rs == 1)
+					inst_reg_arr[cmd->rs] = cmd->imm;
+				if (cmd->rt == 1)
+					inst_reg_arr[cmd->rt] = cmd->imm;
 			}
-			reg_arr[com->rd] = HexToInt2sComp(file_arr[(reg_arr[com->rs]) + reg_arr[com->rt]]); //FIXME - should look into the function
+			inst_reg_arr[cmd->rd] = HexToInt2sComp(instruction_arr[(inst_reg_arr[cmd->rs]) + inst_reg_arr[cmd->rt]]); //FIXME - should look into the function
 		}
 		pc++;
 		break;
 	case 17: //sw
-		clk_counter();
-		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
+		PropagateClock();
+		if(cmd->rd == 1 || cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 		{
-			clk_counter();
+			PropagateClock();
 			pc++; // immediate instructions take advance 2 in pc
-			if (com->rd == 1)
-				reg_arr[com->rd] = com->imm;
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+			if (cmd->rd == 1)
+				inst_reg_arr[cmd->rd] = cmd->imm;
+			if (cmd->rs == 1)
+				inst_reg_arr[cmd->rs] = cmd->imm;
+			if (cmd->rt == 1)
+				inst_reg_arr[cmd->rt] = cmd->imm;
 		}
-		Int_to_Hex8(reg_arr[com->rd], hex_num_temp);
+		IntToHex8(inst_reg_arr[cmd->rd], hex_num_temp);
 		char *store;
-		store = slice_str(hex_num_temp,3,8);
-		//strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], hex_num_temp); // store back in memory
-		strcpy(file_arr[(reg_arr[com->rs] + reg_arr[com->rt])], store); // store back in memory
-		printf("%s\n", file_arr[(reg_arr[com->rs] + reg_arr[com->rt])]);
+		store = SliceStr(hex_num_temp,3,8);
+		strcpy(instruction_arr[(inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt])], store); // store back in memory
+		printf("%s\n", instruction_arr[(inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt])]);
 		pc++;
 		break;
 	case 18: //reti
-		pc = HexToInt2sComp(IOregister[7]);
-		ready_to_irq = 1;
+		pc = HexToInt2sComp(io_registers[7]);
+		irq_ready = 1;
 		break;
 	case 19: //in
-		if(com->rs == 1 || com->rt == 1) // $imm is in use
+		if(cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 		{
-			clk_counter();
+			PropagateClock();
 			pc++; // immediate instructions take advance 2 in pc
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+			if (cmd->rs == 1)
+				inst_reg_arr[cmd->rs] = cmd->imm;
+			if (cmd->rt == 1)
+				inst_reg_arr[cmd->rt] = cmd->imm;
 		}
-		reg_arr[com->rd] = HexToInt2sComp(IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
+		inst_reg_arr[cmd->rd] = HexToInt2sComp(io_registers[inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt]]);
 		pc++;
-		hwregtrace(phwregtrace, 1, reg_arr[com->rs] + reg_arr[com->rt]);
+		HwRegTraceWrite(phwregtrace, 1, inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt]);
 		break;
 	case 20: //out
-		if(com->rd == 1 || com->rs == 1 || com->rt == 1) // $imm is in use
+		if(cmd->rd == 1 || cmd->rs == 1 || cmd->rt == 1) // $imm is in use
 		{
-			clk_counter();
+			PropagateClock();
 			pc++; // immediate instructions take advance 2 in pc
-			if (com->rd == 1)
-				reg_arr[com->rd] = com->imm;
-			if (com->rs == 1)
-				reg_arr[com->rs] = com->imm;
-			if (com->rt == 1)
-				reg_arr[com->rt] = com->imm;
+			if (cmd->rd == 1)
+				inst_reg_arr[cmd->rd] = cmd->imm;
+			if (cmd->rs == 1)
+				inst_reg_arr[cmd->rs] = cmd->imm;
+			if (cmd->rt == 1)
+				inst_reg_arr[cmd->rt] = cmd->imm;
 		}
-		Int_to_Hex8(reg_arr[com->rd], IOregister[reg_arr[com->rs] + reg_arr[com->rt]]);
-		hwregtrace(phwregtrace, 0, reg_arr[com->rs] + reg_arr[com->rt]);
-		switch (reg_arr[com->rs] + reg_arr[com->rt]) 
+		IntToHex8(inst_reg_arr[cmd->rd], io_registers[inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt]]);
+		HwRegTraceWrite(phwregtrace, 0, inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt]);
+		switch (inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt]) 
 		{
 		case 9: //leds
-			leds(pleds);
+			LedsWrite(pleds);
 			break;
 		case 10: //display
-			display(pdisplay);
+			DisplayWrite(pdisplay7seg);
 			break;
 		case 14: // diskcmd
-			diskhandle(disk_out_array); // FIXME - go over this function
+			HardDiskRoutine(hard_disk_arr); // FIXME - go over this function
 			break;
 		case 22:
-			if(HexToInt2sComp(IOregister[22]) == 1)
-				update_monitor();
+			if(HexToInt2sComp(io_registers[22]) == 1)
+				UpdateMonitorArr();
 			break;
 		// FIXME - here should appear monitor cases in the switch
 		}
 		pc++;
 		break;
 	case 21: //halt - write files and close them
-		clk_counter(); // after the execute of the command we update the clk
-		cycle_count++;
-		fprintf(pcycles, "%d", cycle_count);
-		RegItOut(pregout);
-		DiskItOut(pdiskout);
-		MemItOut(pmemout);
-		MonitorOut(pmonitor, pmonitoryuv);
-		fclose(phwregtrace);
-		fclose(pleds);
-		fclose(pdisplay);
-		fclose(pdiskout);
-		fclose(pmemout);
-		fclose(pdiskin);
-		fclose(pregout);
-		fclose(ptrace);
-		fclose(pcycles);
-		fclose(pmonitor);
-		fclose(pmonitoryuv);
-		exit(0);
+		PropagateClock(); // after the execute of the command we update the clk
+		EndProcedure(ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor);
 		break;
 	}
 
-	//if (com->rd == 1 || com->rs == 1 || com->rt == 1) // in case of I format inst.
-		//inc_by++;
-	//if (com->opcode == 16 || com->opcode == 17) // in case of use of lw or sw
-		//inc_by++;
-	cycle_count+=inc_by; //count instructions
-	clk_counter(); // after the execute of the command we update the clk
-	count_to_1024();
+	if (cmd->rd == 1 || cmd->rs == 1 || cmd->rt == 1) // in case of I format inst.
+		inc_by++;
+	if (cmd->opcode == 16 || cmd->opcode == 17) // in case of use of lw or sw
+		inc_by++;
+	PropagateClock(); // after the execute of the command we update the clk
+	Count1024();
 	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
-	fprintf(pcycles, "%d\n", cycle_count /*HexToInt2sComp(IOregister[8])*/);
 }
 
 //takes command lines according to the pc and pass it to perfrom.
-void InstByLine(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE *pdiskin, FILE * pmonitor, FILE * pmonitoryuv)
+void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
-	Command curr_com = { NULL, NULL, NULL, NULL, NULL, NULL };
-	while (pc < memin_array_size) //perform commands until halt or until end of file
+	Command new_cmd = { NULL, NULL, NULL, NULL, NULL, NULL };
+	while (pc < instruction_arr_size) //perform commands until halt or until end of file
 	{
-		BuildCommand(file_arr[pc], &curr_com); //takes the command according to the pc
-		Perform(&curr_com, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay, phwregtrace, pdiskin, pmonitor, pmonitoryuv); //perform the command
-		irq_status_check();
-		if (irq && ready_to_irq)
+		CreateCommand(instruction_arr[pc], &new_cmd); //takes the command according to the pc
+		ExecuteInst(&new_cmd, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor); //perform the command
+		CheckIrqStatus();
+		if (irq && irq_ready)
 		{
-			Int_to_Hex8(pc, IOregister[7]);
-			pc = HexToInt2sComp(IOregister[6]); //the proccessor is ready to jump to interrupt
-			ready_to_irq = 0;
+			IntToHex8(pc, io_registers[7]);
+			pc = HexToInt2sComp(io_registers[6]); //the proccessor is ready to jump to interrupt
+			irq_ready = 0;
 		}
 	}
 }
 
+int CheckForOverflow(int opcode, int rs, int rt)
+{
+	switch(opcode)
+	{
+		case 0:
+		if((rs > 0) && (rt > 0) && (rs > INT32_MAX - rt))
+			return 1;
+		else if ((rs < 0) && (rt < 0) && (rs < INT32_MIN - rt))
+			return 1;
+		else
+			return 0;
+		break;
+		case 1:
+		if((rs > 0) && (rt < 0) && (rs > INT32_MAX + rt))
+			return 1;
+		else if((rs < 0) && (rt > 0) && (rs < INT32_MIN + rt))
+			return 1;
+		else
+			return 0;
+		break;
+		case 2:
+		if((rs > 0) && (rt > 0) && (rs > INT32_MAX/rt))
+			return 1;
+		else if((rs > 0) && (rt < 0) && (rt < INT32_MAX/rs))
+			return 1;
+		else if((rs < 0) && (rt > 0) && (rs < INT32_MIN/rt))
+			return 1;
+		else if((rs < 0) && (rt < 0) && (rs < INT32_MAX/rt))
+			return 1;
+		else
+			return 0;
+		break;
+	}
+	return 0;
+}
+
+void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
+{
+	fprintf(pcycles, "%d", HexToInt2sComp(io_registers[8]));
+	DiskOutWrite(pdiskout);
+	RegOutWrite(pregout);
+	MemOutWrite(pmemout);
+	MonitorWrite(pmonitor);
+	fclose(pmemout);
+	fclose(pregout);
+	fclose(ptrace);
+	fclose(phwregtrace);
+	fclose(pleds);
+	fclose(pdisplay7seg);
+	fclose(pdiskout);
+	fclose(pcycles);
+	fclose(pmonitor);
+	exit(0);
+}
+
 int main(int argc, char *argv[])
 {
-	FILE *memin = fopen(argv[1], "r"), *diskin = fopen(argv[2], "r"), *irq2in = fopen(argv[3], "r"), *memout = fopen(argv[4], "w"), *regout = fopen(argv[5], "w"), *trace = fopen(argv[6], "w"), *hwregtrace = fopen(argv[7], "w"), *cycles = fopen(argv[8], "w"), *leds = fopen(argv[9], "w"), *display = fopen(argv[10], "w"), *diskout = fopen(argv[11], "w"), *monitor = fopen(argv[12], "w"), *monitoryuv = fopen(argv[13], "w");
-	if (memin == NULL || irq2in == NULL || diskin == NULL || memout == NULL || regout == NULL || trace == NULL || cycles == NULL || hwregtrace == NULL || leds == NULL || display == NULL || diskout == NULL)
+	FILE *memin = fopen(argv[1], "r"), *diskin = fopen(argv[2], "r"), *irq2in = fopen(argv[3], "r"), *memout = fopen(argv[4], "w"), *regout = fopen(argv[5], "w"), *trace = fopen(argv[6], "w"), *hwregtrace = fopen(argv[7], "w"), *cycles = fopen(argv[8], "w"), *leds = fopen(argv[9], "w"), *display7seg = fopen(argv[10], "w"), *diskout = fopen(argv[11], "w"), *monitor = fopen(argv[12], "w");
+	if (memin == NULL || irq2in == NULL || diskin == NULL || memout == NULL || regout == NULL || trace == NULL || cycles == NULL || hwregtrace == NULL || leds == NULL || display7seg == NULL || diskout == NULL || monitor == NULL)
 	{
 		printf("One of the files could not be opened \n ");
 		exit(1);
 	}
-	FillArrayOfdiskout(diskin); //copy diskin into the array that represent diskout 
-	read_Data_from_irq2in(irq2in); //read data and then close irq2in
-	FillMonitorArray();
-	int i = 0;
-	// build file array
-	FillArray(memin);
-	fclose(memin);
-	// simulator
-	InstByLine(trace, cycles, memout, regout, leds, diskout, display, hwregtrace, diskin, monitor, monitoryuv);
-	// write and close files if no halt
-	fprintf(cycles, "%d", cycle_count /*HexToInt2sComp(IOregister[8])*/);
-	DiskItOut(diskout);
-	RegItOut(regout);
-	MemItOut(memout);
-	MonitorOut(monitor, monitoryuv);
-	fclose(memout);
-	fclose(regout);
-	fclose(trace);
-	fclose(hwregtrace);
-	fclose(leds);
-	fclose(display);
-	fclose(diskin);
-	fclose(diskout);
-	fclose(cycles);
-	fclose(monitor);
-	fclose(monitoryuv);
-	exit(0);
+	//Initialize
+	SetArrays(diskin, memin, irq2in);
+	// Start main process
+	FetchInst(trace, cycles, memout, regout, leds, diskout, display7seg, hwregtrace, monitor);
+	// If the program did not end earlier, end it now
+	EndProcedure(trace, cycles, memout, regout, leds, diskout, display7seg, hwregtrace, monitor);
 }
