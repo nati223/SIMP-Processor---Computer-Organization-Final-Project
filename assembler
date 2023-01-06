@@ -20,7 +20,7 @@
 // difened a struct that hold label information
 typedef struct Label
 {
-	char name[MAX_LABEL_LEN + 1];
+	char name[MAX_LABEL_LEN+1];
 	int address; // index of output line
 }Label;
 
@@ -73,6 +73,7 @@ char int_base16_to_char_base16(int base16);
 void char_16base_to_char_16base_16scomp(char* base16);
 int char_base16_to_int_base10(char d);
 int base10_char_to_base16_int_16scomp(char* base16, char* base10);
+void close_files(FILE* asm_program, FILE* memin);
 
 
 
@@ -96,6 +97,7 @@ int main(int argc, char* argv[]) {
 	initilaize_memory_array(memory);
 	translate_to_fields(asm_program, assembly_lines, label_array, &word, max_label_array_index, memory);
 	write_output_to_file(memin, memory);
+	close_files(asm_program, memin);
 }
 
 
@@ -826,4 +828,10 @@ int base10_char_to_base16_int_16scomp(char* base16, char* base10)
 	base10_to_base16(base10, base16);
 	char_16base_to_char_16base_16scomp(base16);
 	return strtol(base16, NULL, 16);
+}
+
+void close_files(FILE* asm_program, FILE* memin)
+{
+	fclose(asm_program);
+	fclose(memin);
 }
