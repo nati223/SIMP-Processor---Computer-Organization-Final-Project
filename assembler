@@ -12,7 +12,7 @@
 #define MAX_ROW_LEN 300 // the max line size of the input file
 #define MAX_LABEL_LEN 50 // the max lable size
 #define MEM_SIZE 4096 // max num of rows in the main memory
-#define Len_OF_ROW 20 // len of each row
+#define LEN_OF_ROW 20 // len of each row, didnt use it
 
 
 /////structs declaration/////
@@ -24,7 +24,7 @@ typedef struct Label
 	int address; // index of output line
 }Label;
 
-
+// difened a struct that hold line information
 typedef struct LINE
 {
 	int opcode;
@@ -44,38 +44,49 @@ typedef struct Word
 
 
 /////functions declaration/////
+//----initialazing----//
 void initilaize_memory_array(int* memory);
-int type_of_line(char* line);
-int has_label(char* line);
-int has_instruction(char* line);
-int find_type(char* line);
+int initilaize_label_array(FILE* asm_program, Label* label_array);
+
+//----extract line data----//
+void get_label(char* line, Label* label);
 int translate_line_to_fields(char* line, LINE* assembly_line, Label* label_array, Word* word, int max_label_array_index);
 int get_opcode(char** line);
 int get_reg(char** line);
 int get_imm(char* line, Label* label_array, int max_label_array_index);
-//int base10_to_base16(char* line);
 void extract_imm_by_space(char* line);
-char* skip_seperator(char* line);
 void translate_to_fields(FILE* program, LINE* assembly_lines, Label* label_array, Word* word, int max_label_array_index, int* memory);
-int hex_value(LINE* assembly_lines);
-void get_label(char* line, Label* label);
-int initilaize_label_array(FILE* asm_program, Label* label_array);
-void write_output_to_file(FILE* output, int* memory);
 Word* word_to_fields(char* line, Word* word);
-void address_to_word(char* address, Word* word);
-void address_hexe_to_int(char* address, int address_int);
 void data_to_word(char* data, Word* word);
-//int chardata_to_inthex(char* data);
+void address_to_word(char* address, Word* word);
+
+
+//check information from line----//
+int type_of_line(char* line);
+int has_label(char* line);
+int has_instruction(char* line);
+int find_type(char* line);
+
+
+//----extract spases, hashtags etc----//
+char* skip_seperator(char* line);
 void erase_hashtag(char* line);
 char* erase_spaces_in_the_end(char* line);
+
+
+//----writing function----//
+int hex_value(LINE* assembly_lines);
+void write_output_to_file(FILE* output, int* memory);
+void close_files(FILE* asm_program, FILE* memin);
+
+
+//----base number exchange----//
+void address_hexe_to_int(char* address, int address_int);
 void base10_to_base16(char* base10, char* base16);
 char int_base16_to_char_base16(int base16);
 void char_16base_to_char_16base_16scomp(char* base16);
 int char_base16_to_int_base10(char d);
 int base10_char_to_base16_int_16scomp(char* base16, char* base10);
-void close_files(FILE* asm_program, FILE* memin);
-
-
 
 
 ///// main /////
@@ -88,7 +99,6 @@ int main(int argc, char* argv[]) {
 		printf("File could not be open\n"); // if it failed, print an error
 		return 0;
 	}
-
 	Label label_array[MEM_SIZE];
 	Word word = { 0,0 };
 	int max_label_array_index = initilaize_label_array(asm_program, label_array);
@@ -442,13 +452,6 @@ int get_imm(char* line, Label* label_array, int max_label_array_index)
 	}
 }
 
-//// function that convert base 10 to base 16
-//int base10_to_base16(char* line)
-//{
-//	return (int)strtol(line, NULL, 10);
-//
-//}
-
 
 void extract_imm_by_space(char* line)
 {
@@ -681,12 +684,6 @@ void data_to_word(char* data, Word* word)
 	}
 }
 
-//
-//int chardata_to_inthex(char* data)
-//{
-//	return (int)strtol(data, NULL, 16);
-//}
-
 
 void erase_hashtag(char* line)
 {
@@ -769,6 +766,8 @@ char int_base16_to_char_base16(int base16)
 		return '1';
 	if (base16 == 0)
 		return '0';
+	else
+		return '-'; // error
 }
 
 void char_16base_to_char_16base_16scomp(char* base16)
