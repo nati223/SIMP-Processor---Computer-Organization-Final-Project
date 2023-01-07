@@ -20,6 +20,8 @@ typedef struct Command {
 #define SIZE 4096
 #define DISK_SIZE 16384        //128 sectors * 128 lines
 #define MONITOR_SIZE 65536      // 256*256 pixels
+#define INT20_MAX 524287
+#define INT20_MIN -524288
 char instruction_arr[SIZE + 1][6]; //array of based on memin.txt
 static int pc = 0;
 static int instruction_arr_size;
@@ -32,7 +34,6 @@ static int in_irq1 = 0;
 static int irq1_cycle_counter = 0;
 int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
 static int irq2_arr_cur_position = 0;
-int reti_waiting = 0; //this flag indicates us if we are in the middle of an interrupt
 char monitor_arr[MONITOR_SIZE + 1][9];
 
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -40,66 +41,94 @@ char monitor_arr[MONITOR_SIZE + 1][9];
 
 // Auxiliary Functions //
 
+//Slice input string from start index up to and including end index
 char * SliceStr(char str[], int start, int end);
 
+//Maps hexa digits to their decimal value and returns it as an integer.
 int HexCharToInt(char h);
 
+//Converts and integer to an 8 digit hexa string
 void IntToHex8(int dec_num, char hex_num[9]);
 
+// Converts a string holds an hexadecimal representation of a number, and returns the number as an integer.
 int HexToInt2sComp(char * h);
 
 // Initialization Functions //
 
+//Fill hard_disk_arr, based on diskin.txt file
 void FillDiskoutArr(FILE * pdiskin);
 
+//Fills instruction_arr, based on memin.txt file
 void FillInstArr(FILE * pmemin);
 
+//Fills irq2_interrupt_cycles array, based on irq2in.txt file
 void FillIrq2inArr(FILE * pirq2in);
 
+//Fills monitor_arr with with MONITOR_SIZE lines initialized "00000000".
 void FillMonitorArr();
 
+//Groups all initiliazation functions under one umbrella, in order to execute them all together when the program starts
 void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in);
 
 // Main Runtime Functions //
 
+//The function propagates the simulation. It iterates over inst_arr according to the pc, creats a Command struct and sends it to execution. After each instruction, the functions also checks for interrupts and start their execution process if needed.
 void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
 
-void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
-
-void PropagateClock();
-
-int CheckForOverflow(int opcode, int rs, int rt);
-
-void TraceWrite(Command * cmd, FILE * ptrace);
-
-void Count1024();
-
-void HardDiskRoutine(char diskout[][6]);
-
-void UpdateMonitorArr();
-
-void CheckIrqStatus();
-
-void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num);
-
+// Takes the 5 hexa digits that are given in memin.txt, and creates a Command struct object with it's desired fields.
 void CreateCommand(char * command_line, Command * cmd);
 
+// Checks in we are in or should interrupt
+void CheckIrqStatus();
+
+//This function controls the instruction execution in the program. It chooses the correct instruction according to opcode, and performs the desired operations according to the specifications. Handling clock propagation, and the keeping the correct pc value is also done here. Checking overflow is done for addition, subtraction and multiplication.
+void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
+
+//Propagates clock by one each time it's called, and sets it to 0 (cyclicity) after when overflow occurs.
+void PropagateClock();
+
+//Checks if overflow has occured in one of the following operations: addition, subtraction, multiplication.
+int CheckForOverflow(int opcode, int rs, int rt);
+
+//Writes to trace.txt file according to the given format in the assignemnt.
+void TraceWrite(Command * cmd, FILE * ptrace);
+
+//Counts to 1024 when in interrupt type 1 and propagates clock accordingly. When reaching 1024 - exits interrupt status, diskstatus is free and discmd is 0.
+void Count1024();
+
+// Performs reading\writing operations to or from the hard disk.
+void HardDiskRoutine(char diskout[][6]);
+
+// Updates the pixel values that are represented in monitor_arr.
+void UpdateMonitorArr();
+
+// Writes to hwregtrace.txt after each read or write to a hardware register (after in\out instructions), according to the format specified in the assignment.
+void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num);
+
+//Writes to leds.txt according to the format specified in the assignment.
 void LedsWrite(FILE * pleds);
 
-void TimerHandle(int inc_by);
+//Checks if the timer was activated. If it does, it incerements it's value each clock cycle.
+void TimerRoutine(int inc_by);
 
+//Writes to display7seg.txt, a file that contains the 7-segment display at every clock cycle when the display changes.
 void DisplayWrite(FILE * pdisplay7seg);
 
-// End Of Program Functions //
+// End Of simulation functions //
 
+// Writes the registers content to regout.txt
 void RegOutWrite(FILE * pregout);
 
+//Writes the memory content, i.e instruction_arr, to memout.txt
 void MemOutWrite(FILE * pmemout);
 
+//Writes the hard disk content to diskout.txt
 void DiskOutWrite(FILE * pdiskout);
 
+//Writes the monitor content to monitor.txt
 void MonitorWrite(FILE * pmonitor);
 
+//Groups all the procedures above that need to write to the files only at the end of the program. After that, it closes all files that were still open and exits the simulation.
 void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
 
 
@@ -107,7 +136,6 @@ void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout,
 // Functions implementation
 /////////////////////////////////////////////////////////////
 
-//Slice input string from start index up to and including end index
 char * SliceStr(char str[], int start, int end)
 {
 	static char temp[9];
@@ -123,7 +151,6 @@ char * SliceStr(char str[], int start, int end)
 	return temp;
 }
 
-//Maps hexa digits to their decimal value and returns it as an integer.
 int HexCharToInt(char h) {
 	short res;
 	switch (h) {
@@ -170,7 +197,6 @@ int HexCharToInt(char h) {
 	return res;
 }
 
-//Converts and integer to a 8 digit hexa string
 void IntToHex8(int dec_num, char hex_num[9])
 {
 	if (dec_num < 0) //if dec_num is negative, add 2^32 to it
@@ -178,7 +204,6 @@ void IntToHex8(int dec_num, char hex_num[9])
 	sprintf(hex_num, "%08X", dec_num); //set hex_num to be dec_num in signed hex
 }
 
-// Converts a string holds an hexadecimal representation of a number, and returns the number as an integer.
 int HexToInt2sComp(char * h) {
 	int i;
 	int res = 0;
@@ -199,7 +224,6 @@ int HexToInt2sComp(char * h) {
 // Setup Functions //
 ////////////////////////////////////////////////////
 
-
 void FillIrq2inArr(FILE * irq2in)
 {
 	for (int k = 0; k < SIZE; k++)
@@ -215,7 +239,6 @@ void FillIrq2inArr(FILE * irq2in)
 	fclose(irq2in);
 }
 
-//copy memin to array char "instruction_arr" 
 void FillInstArr(FILE * pmemin)
 {
 	char line[6];
@@ -229,13 +252,12 @@ void FillInstArr(FILE * pmemin)
 	instruction_arr_size = i;
 	while (i < SIZE)
 	{
-		strcpy(instruction_arr[i], "00000"); // paddin with zeros all the empty memory fills array[i]
+		strcpy(instruction_arr[i], "00000"); // padding with zeros all the empty memory fills array[i]
 		i++;
 	}
 	fclose(pmemin);
 }
 
-//copy the content of diksin into array disk_out_array
 void FillDiskoutArr(FILE * pdiskin)
 {
 	char mline[6];
@@ -266,7 +288,6 @@ void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
 // Main process functions
 ////////////////////////////////////////////////////////////////
 
-// if we get disk read/write command, we start counting to 1024 before the next command.
 void Count1024()
 {
 	if (in_irq1)
@@ -278,43 +299,41 @@ void Count1024()
 			irq1_cycle_counter = 0;
 			in_irq1 = 0;
 			IntToHex8(0, io_registers[14]);  //diskcmd is now 0
-			IntToHex8(0, io_registers[17]);  //disk if free now
+			IntToHex8(0, io_registers[17]);  //disk is free now
 			IntToHex8(1, io_registers[4]);	//FIXME - irq1 status is 1, and now we know we have finished
 		}
 	}
 }
 
-//this function conatins the logic of the disk handle
 void HardDiskRoutine(char diskout[][6])
 {
 	if (!HexToInt2sComp(io_registers[17])) // The disk is free to read/write
 	{
-		int k = 0;
+		int i = 0;
 		char temp[20];
-		int sector = HexToInt2sComp(io_registers[15]) * 128;
-		int mem_address = HexToInt2sComp(io_registers[16]);
-		//char str[9]; not in use
+		int sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
+		int mem_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.
 		switch (HexToInt2sComp(io_registers[14])) {
 		case 0: //no command
 			break;
 		case 1: //read sector
-			IntToHex8(1, io_registers[17]);  //Assign disk status to 1
-			in_irq1 = 1; // we get irq1 interupt
-			for (k = sector; k < sector + 128; k++)
+			IntToHex8(1, io_registers[17]);  //Assign disk status to 1 (busy)
+			in_irq1 = 1; // raise that we are in irq1 interrupt
+			for (i = sector_pos; i < sector_pos + 128; i++)
 			{
-				strcpy(instruction_arr[mem_address], diskout[k]); // read diskin into memin
+				strcpy(instruction_arr[mem_address], diskout[i]); // read from hard disk to buffer
 				if (mem_address + 1 == SIZE)
-					mem_address = 0;
+					mem_address = 0; //FIXME - ask in the forum about that
 				else
 					mem_address++;
 			}
 			break;
 		case 2: //write command
-			in_irq1 = 1; // we get irq1 interupt
-			IntToHex8(1, io_registers[17]);  //Assign disk status to 1
-			for (k = sector; k < sector + 128; k++)
+			IntToHex8(1, io_registers[17]);  //Assign disk status to 1 (busy)
+			in_irq1 = 1; // raise that we are in irq1 interrupt
+			for (i = sector_pos; i < sector_pos + 128; i++)
 			{
-				strcpy(diskout[k], instruction_arr[mem_address]);
+				strcpy(diskout[i], instruction_arr[mem_address]); // write to hard_disk from buffer
 				if (mem_address + 1 == SIZE)
 					mem_address = 0;
 				else
@@ -325,8 +344,6 @@ void HardDiskRoutine(char diskout[][6])
 	}
 }
 
-
-//write to trace.txt, documents the state of all regs and PC before execution of the instruction in line
 void TraceWrite(Command  * com, FILE * ptrace)
 {
 	char pch[4]; // PC in hexa digits
@@ -409,10 +426,9 @@ void TraceWrite(Command  * com, FILE * ptrace)
 	fprintf(ptrace, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n", pch, inst, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15);
 }
 
-//contain the logic of the timer
-void TimerHandle(int inc_by)
+void TimerRoutine(int inc_by)
 {
-	if (HexToInt2sComp(io_registers[11]) == 1)
+	if (HexToInt2sComp(io_registers[11]) == 1) // Timerenable is 1 indicates that timer request has occured. 0 will stop the count.
 		if (HexToInt2sComp(io_registers[12]) + inc_by <= HexToInt2sComp(io_registers[13])) //if timercurrent is less than timermax
 			IntToHex8((HexToInt2sComp(io_registers[12]) + inc_by), io_registers[12]);
 
@@ -423,7 +439,6 @@ void TimerHandle(int inc_by)
 	}
 }
 
-// check if there is an interrupt
 void CheckIrqStatus()
 {
 	if (HexToInt2sComp(io_registers[1]) && HexToInt2sComp(io_registers[4]) && irq_ready) 
@@ -550,7 +565,7 @@ void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num)
 		fprintf(phwregtrace, "%d WRITE %s %s\n", HexToInt2sComp(io_registers[8]), name, io_registers[reg_num]);
 	}
 }
-// gets a command line, and divides it to its components in com
+
 void CreateCommand(char * command_line, Command * com)
 {
 	strcpy(com->inst, command_line);
@@ -567,12 +582,12 @@ void CreateCommand(char * command_line, Command * com)
 			com->imm -= 1048576;
 	}
 }
-//this function write to led.txt file
+
 void LedsWrite(FILE * pleds)
 {
 	fprintf(pleds, "%d %s\n", HexToInt2sComp(io_registers[8]), io_registers[9]);
 }
-//this function write to display7seg.txt file
+
 void DisplayWrite(FILE * pdisplay7seg)
 {
 	fprintf(pdisplay7seg, "%d %s\n", HexToInt2sComp(io_registers[8]), io_registers[10]);
@@ -592,7 +607,6 @@ void UpdateMonitorArr()
 	strcpy(monitor_arr[pixel_addr], io_registers[21]);
 }
 
-//increment the clock according to the instruction type
 void PropagateClock()
 {
 	if (HexToInt2sComp(io_registers[8]) == HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
@@ -601,8 +615,6 @@ void PropagateClock()
 		IntToHex8((HexToInt2sComp(io_registers[8]) + 1), io_registers[8]);
 }
 
-//according to the opcode, perform the command, write to trace, manage pc and cycles, and if 'halt' write to files and close them.
-// this is the heart of the program, which incharge to execute the command, manage the clock, the timer and the disk
 void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
 	// FIXME - didn't go over the constants or function below until switch
@@ -890,7 +902,7 @@ void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, F
 		char *store;
 		store = SliceStr(hex_num_temp,3,8);
 		strcpy(instruction_arr[(inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt])], store); // store back in memory
-		printf("%s\n", instruction_arr[(inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt])]);
+		//printf("%s\n", instruction_arr[(inst_reg_arr[cmd->rs] + inst_reg_arr[cmd->rt])]);
 		pc++;
 		break;
 	case 18: //reti
@@ -933,10 +945,10 @@ void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, F
 		case 10: //display
 			DisplayWrite(pdisplay7seg);
 			break;
-		case 14: // diskcmd
-			HardDiskRoutine(hard_disk_arr); // FIXME - go over this function
+		case 14: // hard disk
+			HardDiskRoutine(hard_disk_arr);
 			break;
-		case 22:
+		case 22: // monitor
 			if(HexToInt2sComp(io_registers[22]) == 1)
 				UpdateMonitorArr();
 			break;
@@ -955,10 +967,9 @@ void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, F
 		inc_by++;
 	PropagateClock(); // after the execute of the command we update the clk
 	Count1024();
-	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
+	TimerRoutine(inc_by);
 }
 
-// Fetches instruction from instruction_arr and passes it to execution. Checks after each instruction for interrupts.
 void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
 	Command new_cmd = { NULL, NULL, NULL, NULL, NULL, NULL };
@@ -976,35 +987,34 @@ void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FI
 	}
 }
 
-// This function checks for each arithmetic operation that is prone to overflow, if it will occur
 int CheckForOverflow(int opcode, int rs, int rt)
 {
 	switch(opcode)
 	{
 		case 0:
-		if((rs > 0) && (rt > 0) && (rs > INT32_MAX - rt))
+		if((rs > 0) && (rt > 0) && (rs > INT20_MAX - rt))
 			return 1;
-		else if ((rs < 0) && (rt < 0) && (rs < INT32_MIN - rt))
+		else if ((rs < 0) && (rt < 0) && (rs < INT20_MIN - rt))
 			return 1;
 		else
 			return 0;
 		break;
 		case 1:
-		if((rs > 0) && (rt < 0) && (rs > INT32_MAX + rt))
+		if((rs > 0) && (rt < 0) && (rs > INT20_MAX + rt))
 			return 1;
-		else if((rs < 0) && (rt > 0) && (rs < INT32_MIN + rt))
+		else if((rs < 0) && (rt > 0) && (rs < INT20_MIN + rt))
 			return 1;
 		else
 			return 0;
 		break;
 		case 2:
-		if((rs > 0) && (rt > 0) && (rs > INT32_MAX/rt))
+		if((rs > 0) && (rt > 0) && (rs > INT20_MAX/rt))
 			return 1;
-		else if((rs > 0) && (rt < 0) && (rt < INT32_MAX/rs))
+		else if((rs > 0) && (rt < 0) && (rt < INT20_MAX/rs))
 			return 1;
-		else if((rs < 0) && (rt > 0) && (rs < INT32_MIN/rt))
+		else if((rs < 0) && (rt > 0) && (rs < INT20_MIN/rt))
 			return 1;
-		else if((rs < 0) && (rt < 0) && (rs < INT32_MAX/rt))
+		else if((rs < 0) && (rt < 0) && (rs < INT20_MAX/rt))
 			return 1;
 		else
 			return 0;
@@ -1017,7 +1027,6 @@ int CheckForOverflow(int opcode, int rs, int rt)
 // End of program functions
 //////////////////////////////////////////////////////
 
-//write to regout.txt
 void RegOutWrite(FILE *pregout)
 {
 	int i = 0;
@@ -1025,7 +1034,6 @@ void RegOutWrite(FILE *pregout)
 		fprintf(pregout, "%08X\n", inst_reg_arr[i]);
 }
 
-//Write to memout.txt
 void MemOutWrite(FILE *pmemout)
 {
 	int i = 0;
@@ -1033,7 +1041,6 @@ void MemOutWrite(FILE *pmemout)
 		fprintf(pmemout, "%s\n", instruction_arr[i]);
 }
 
-//Write to diskout.txt
 void DiskOutWrite(FILE *diskout)
 {
 	int i = 0;
@@ -1041,7 +1048,6 @@ void DiskOutWrite(FILE *diskout)
 		fprintf(diskout, "%s\n", hard_disk_arr[i]);
 }
 
-//Write to monitor.txt
 void MonitorWrite(FILE * pmonitor)
 {
 	for(int i=0;i<MONITOR_SIZE;i++) // Go over monitor_arr and write the 2 rightmost hexa digits.
