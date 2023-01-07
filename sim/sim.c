@@ -16,10 +16,10 @@ typedef struct Command {
 }Command;
 
 ////////////////////////////////////////////////////////////////
-//Global Parameters:
+//Global variables:
 #define SIZE 4096
-#define DISK_SIZE 16384 //128 sectors * 128 lines
-#define MONITOR_SIZE 65536 // 256*256 pixels
+#define DISK_SIZE 16384        //128 sectors * 128 lines
+#define MONITOR_SIZE 65536      // 256*256 pixels
 char instruction_arr[SIZE + 1][6]; //array of based on memin.txt
 static int pc = 0;
 static int instruction_arr_size;
@@ -104,8 +104,102 @@ void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout,
 
 
 //////////////////////////////////////////////////////////////
+// Functions implementation
+/////////////////////////////////////////////////////////////
 
-//read data from irq2in to array irq2_interrupt_pc and close the irq2in file.
+//Slice input string from start index up to and including end index
+char * SliceStr(char str[], int start, int end)
+{
+	static char temp[9];
+	int i = 0;
+	while (start <= end)
+	{
+		temp[i] = str[start];
+		i++;
+		start++;
+	}
+	temp[i] = '\0';
+
+	return temp;
+}
+
+//Maps hexa digits to their decimal value and returns it as an integer.
+int HexCharToInt(char h) {
+	short res;
+	switch (h) {
+	case 'A':
+		res = 10;
+		break;
+	case 'B':
+		res = 11;
+		break;
+	case 'C':
+		res = 12;
+		break;
+	case 'D':
+		res = 13;
+		break;
+	case 'E':
+		res = 14;
+		break;
+	case 'F':
+		res = 15;
+		break;
+	case 'a':
+		res = 10;
+		break;
+	case 'b':
+		res = 11;
+		break;
+	case 'c':
+		res = 12;
+		break;
+	case 'd':
+		res = 13;
+		break;
+	case 'e':
+		res = 14;
+		break;
+	case 'f':
+		res = 15;
+		break;
+	default:
+		res = atoi(&h); // if char < 10 change it to int
+		break;
+	}
+	return res;
+}
+
+//Converts and integer to a 8 digit hexa string
+void IntToHex8(int dec_num, char hex_num[9])
+{
+	if (dec_num < 0) //if dec_num is negative, add 2^32 to it
+		dec_num = dec_num + 4294967296; // dec_num = dec_num + 2^32
+	sprintf(hex_num, "%08X", dec_num); //set hex_num to be dec_num in signed hex
+}
+
+// Converts a string holds an hexadecimal representation of a number, and returns the number as an integer.
+int HexToInt2sComp(char * h) {
+	int i;
+	int res = 0;
+	int len = strlen(h);
+	for (i = 0; i < len; i++)
+	{
+		res += HexCharToInt(h[len - 1 - i]) * (1 << (4 * i)); // change char by char from right to left, and shift it left 4*i times (2^4i) 
+	}
+	if ((len < 8) && (res & (1 << (len * 4 - 1)))) // if len is less than 8 and the msb is 1, we want to sign extend the number
+	{
+		res |= -1 * (1 << (len * 4)); // perform bitwise or with the mask of 8-len times 1's and len time 0's
+	}
+
+	return res;
+}
+
+////////////////////////////////////////////////////
+// Setup Functions //
+////////////////////////////////////////////////////
+
+
 void FillIrq2inArr(FILE * irq2in)
 {
 	for (int k = 0; k < SIZE; k++)
@@ -120,6 +214,57 @@ void FillIrq2inArr(FILE * irq2in)
 	}
 	fclose(irq2in);
 }
+
+//copy memin to array char "instruction_arr" 
+void FillInstArr(FILE * pmemin)
+{
+	char line[6];
+	int i = 0;
+	while (!feof(pmemin))
+	{
+		fscanf(pmemin, "%5[^\n]\n", line); //scans the first 5 chars in a line
+		strcpy(instruction_arr[i], line); //fills array[i]
+		i++;
+	}
+	instruction_arr_size = i;
+	while (i < SIZE)
+	{
+		strcpy(instruction_arr[i], "00000"); // paddin with zeros all the empty memory fills array[i]
+		i++;
+	}
+	fclose(pmemin);
+}
+
+//copy the content of diksin into array disk_out_array
+void FillDiskoutArr(FILE * pdiskin)
+{
+	char mline[6];
+	int i = 0;
+	while (!feof(pdiskin))
+	{
+		fscanf(pdiskin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
+		strcpy(hard_disk_arr[i], mline); //disk_out_array[i]
+		i++;
+	}
+	while (i < DISK_SIZE)
+	{
+		strcpy(hard_disk_arr[i], "00000"); // paddin with zeros all the empty memory disk_out_array[i]
+		i++;
+	}
+	fclose(pdiskin);
+}
+
+void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
+{
+	FillDiskoutArr(pdiskin); 
+	FillIrq2inArr(pirq2in);
+	FillInstArr(pmemin);
+	FillMonitorArr();
+}
+
+/////////////////////////////////////////////////////////////////
+// Main process functions
+////////////////////////////////////////////////////////////////
 
 // if we get disk read/write command, we start counting to 1024 before the next command.
 void Count1024()
@@ -180,163 +325,7 @@ void HardDiskRoutine(char diskout[][6])
 	}
 }
 
-//slice string str from start location to end
-char * SliceStr(char str[], int start, int end)
-{
-	static char temp[9];
-	int i = 0;
-	while (start <= end)
-	{
-		temp[i] = str[start];
-		i++;
-		start++;
-	}
-	temp[i] = '\0';
 
-	return temp;
-}
-
-//convert char to int
-int HexCharToInt(char h) {
-	short res;
-	switch (h) {
-	case 'A':
-		res = 10;
-		break;
-	case 'B':
-		res = 11;
-		break;
-	case 'C':
-		res = 12;
-		break;
-	case 'D':
-		res = 13;
-		break;
-	case 'E':
-		res = 14;
-		break;
-	case 'F':
-		res = 15;
-		break;
-	case 'a':
-		res = 10;
-		break;
-	case 'b':
-		res = 11;
-		break;
-	case 'c':
-		res = 12;
-		break;
-	case 'd':
-		res = 13;
-		break;
-	case 'e':
-		res = 14;
-		break;
-	case 'f':
-		res = 15;
-		break;
-	default:
-		res = atoi(&h); // if char < 10 change it to int
-		break;
-	}
-	return res;
-}
-
-//convert int to Hex8
-void IntToHex8(int dec_num, char hex_num[9])
-{
-	if (dec_num < 0) //if dec_num is negative, add 2^32 to it
-		dec_num = dec_num + 4294967296; // dec_num = dec_num + 2^32
-	sprintf(hex_num, "%08X", dec_num); //set hex_num to be dec_num in signed hex
-}
-
-//convert Hex to int in 2's complement
-int HexToInt2sComp(char * h) {
-	int i;
-	int res = 0;
-	int len = strlen(h);
-	for (i = 0; i < len; i++)
-	{
-		res += HexCharToInt(h[len - 1 - i]) * (1 << (4 * i)); // change char by char from right to left, and shift it left 4*i times (2^4i) 
-	}
-	if ((len < 8) && (res & (1 << (len * 4 - 1)))) // if len is less than 8 and the msb is 1, we want to sign extend the number
-	{
-		res |= -1 * (1 << (len * 4)); // perform bitwise or with the mask of 8-len times 1's and len time 0's
-	}
-
-	return res;
-}
-
-void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
-{
-	FillDiskoutArr(pdiskin); 
-	FillIrq2inArr(pirq2in);
-	FillInstArr(pmemin);
-	FillMonitorArr();
-}
-
-//copy memin to array char "instruction_arr" 
-void FillInstArr(FILE * pmemin)
-{
-	char line[6];
-	int i = 0;
-	while (!feof(pmemin))
-	{
-		fscanf(pmemin, "%5[^\n]\n", line); //scans the first 5 chars in a line
-		strcpy(instruction_arr[i], line); //fills array[i]
-		i++;
-	}
-	instruction_arr_size = i;
-	while (i < SIZE)
-	{
-		strcpy(instruction_arr[i], "00000"); // paddin with zeros all the empty memory fills array[i]
-		i++;
-	}
-	fclose(pmemin);
-}
-
-//copy the content of diksin into array disk_out_array
-void FillDiskoutArr(FILE * pdiskin)
-{
-	char mline[6];
-	int i = 0;
-	while (!feof(pdiskin))
-	{
-		fscanf(pdiskin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
-		strcpy(hard_disk_arr[i], mline); //disk_out_array[i]
-		i++;
-	}
-	while (i < DISK_SIZE)
-	{
-		strcpy(hard_disk_arr[i], "00000"); // paddin with zeros all the empty memory disk_out_array[i]
-		i++;
-	}
-	fclose(pdiskin);
-}
-
-//write to regout.txt
-void RegOutWrite(FILE *pregout)
-{
-	int i = 0;
-	for (i = 2; i < 16; i++) //go over reg_arr and print it to regout
-		fprintf(pregout, "%08X\n", inst_reg_arr[i]);
-}
-
-//write to memout.txt
-void MemOutWrite(FILE *pmemout)
-{
-	int i = 0;
-	for (i = 0; i <= SIZE; i++) //go over instruction_arr and write it to memout
-		fprintf(pmemout, "%s\n", instruction_arr[i]);
-}
-//write to diskout.txt
-void DiskOutWrite(FILE *diskout)
-{
-	int i = 0;
-	for (i = 0; i <= DISK_SIZE + 1; i++) //go over instruction_arr and write it to memout
-		fprintf(diskout, "%s\n", hard_disk_arr[i]);
-}
 //write to trace.txt, documents the state of all regs and PC before execution of the instruction in line
 void TraceWrite(Command  * com, FILE * ptrace)
 {
@@ -601,14 +590,6 @@ void UpdateMonitorArr()
 {
 	int pixel_addr = HexToInt2sComp(io_registers[20]);
 	strcpy(monitor_arr[pixel_addr], io_registers[21]);
-}
-
-void MonitorWrite(FILE * pmonitor)
-{
-	for(int i=0;i<MONITOR_SIZE;i++)
-	{
-		fprintf(pmonitor, "%s\n", SliceStr(monitor_arr[i],6,8));	
-	}
 }
 
 //increment the clock according to the instruction type
@@ -959,7 +940,6 @@ void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, F
 			if(HexToInt2sComp(io_registers[22]) == 1)
 				UpdateMonitorArr();
 			break;
-		// FIXME - here should appear monitor cases in the switch
 		}
 		pc++;
 		break;
@@ -978,7 +958,7 @@ void ExecuteInst(Command * cmd, FILE * ptrace, FILE * pcycles, FILE * pmemout, F
 	TimerHandle(inc_by);// evey command we update the timer via the function timer handle
 }
 
-//takes command lines according to the pc and pass it to perfrom.
+// Fetches instruction from instruction_arr and passes it to execution. Checks after each instruction for interrupts.
 void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
 	Command new_cmd = { NULL, NULL, NULL, NULL, NULL, NULL };
@@ -996,6 +976,7 @@ void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FI
 	}
 }
 
+// This function checks for each arithmetic operation that is prone to overflow, if it will occur
 int CheckForOverflow(int opcode, int rs, int rt)
 {
 	switch(opcode)
@@ -1030,6 +1011,43 @@ int CheckForOverflow(int opcode, int rs, int rt)
 		break;
 	}
 	return 0;
+}
+
+///////////////////////////////////////////////////////
+// End of program functions
+//////////////////////////////////////////////////////
+
+//write to regout.txt
+void RegOutWrite(FILE *pregout)
+{
+	int i = 0;
+	for (i = 2; i < 16; i++) //go over reg_arr and print it to regout
+		fprintf(pregout, "%08X\n", inst_reg_arr[i]);
+}
+
+//Write to memout.txt
+void MemOutWrite(FILE *pmemout)
+{
+	int i = 0;
+	for (i = 0; i <= SIZE; i++) //go over instruction_arr and write it to memout
+		fprintf(pmemout, "%s\n", instruction_arr[i]);
+}
+
+//Write to diskout.txt
+void DiskOutWrite(FILE *diskout)
+{
+	int i = 0;
+	for (i = 0; i <= DISK_SIZE + 1; i++) //go over instruction_arr and write it to memout
+		fprintf(diskout, "%s\n", hard_disk_arr[i]);
+}
+
+//Write to monitor.txt
+void MonitorWrite(FILE * pmonitor)
+{
+	for(int i=0;i<MONITOR_SIZE;i++) // Go over monitor_arr and write the 2 rightmost hexa digits.
+	{
+		fprintf(pmonitor, "%s\n", SliceStr(monitor_arr[i],6,8));	
+	}
 }
 
 void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
