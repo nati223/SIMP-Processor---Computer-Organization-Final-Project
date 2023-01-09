@@ -481,7 +481,7 @@ void translate_to_fields(FILE* program, LINE* assembly_lines, Label* label_array
 {
 	char line[MAX_ROW_LEN];
 	int line_index = 0;
-	rewind(program); // reset the pointer of asm_program file to the begining of the file																			//repositioning the pointer to the beggining of the file
+	rewind(program); // reset the pointer of asm_program file to the begining of the file																			
 	while (NULL != fgets(line, MAX_ROW_LEN, program)) 
 	{
 		erase_hashtag(line); // erase the # and note if exists
