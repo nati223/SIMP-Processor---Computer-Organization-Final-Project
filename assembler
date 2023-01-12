@@ -6,7 +6,7 @@
 #include <math.h> // for aritmetics
 #include <string.h> // for string function
 #include <stdlib.h> // for strtol
-
+//#include <crtdbg.h>
 
 /////declaretion of the permenent parameters/////
 #define MAX_ROW_LEN 300 // the max line size of the input file
@@ -20,7 +20,7 @@
 // difened a struct that hold label information
 typedef struct Label
 {
-	char name[MAX_LABEL_LEN+1];
+	char name[MAX_LABEL_LEN + 1];
 	int address; // index of output line
 }Label;
 
@@ -78,6 +78,8 @@ char* erase_spaces_in_the_end(char* line);
 int hex_value(LINE* assembly_lines);
 void write_output_to_file(FILE* output, int* memory);
 void close_files(FILE* asm_program, FILE* memin);
+void free_allocate_memorry(Label* label_array,LINE* assembly_lines, int* memory);
+
 
 
 //----base number exchange----//
@@ -99,15 +101,18 @@ int main(int argc, char* argv[]) {
 		printf("File could not be open\n"); // if it failed, print an error
 		return 0;
 	}
-	Label label_array[MEM_SIZE];
+	Label* label_array = (Label*)calloc(MEM_SIZE, sizeof(Label));
 	Word word = { 0,0 };
 	int max_label_array_index = initilaize_label_array(asm_program, label_array);
-	LINE assembly_lines[MEM_SIZE];
-	int memory[MEM_SIZE];
+	LINE* assembly_lines = (LINE*)calloc(MEM_SIZE, sizeof(LINE));
+	int* memory = (int*) calloc(MEM_SIZE, sizeof(int));
 	initilaize_memory_array(memory);
 	translate_to_fields(asm_program, assembly_lines, label_array, &word, max_label_array_index, memory);
 	write_output_to_file(memin, memory);
 	close_files(asm_program, memin);
+	free_allocate_memorry(label_array, assembly_lines, memory);
+	//_CrtDumpMemoryLeaks();
+	return;
 }
 
 
@@ -121,7 +126,7 @@ void initilaize_memory_array(int* memory)
 }
 
 int type_of_line(char* line) // 0 for empty row, 1 for only label, 2 for label+Rtype, 3 for label + Itype, 4 for only Rtype, 5 for only Itype, 6 for .word
-{ 
+{
 	if (1 == has_label(line)) {
 		// the line has a label
 		// check if the line has instructions as well 
@@ -196,13 +201,13 @@ int translate_line_to_fields(char* line, LINE* assembly_line, Label* label_array
 	{
 		return 0; // the line has no instructions to translate to fields
 	}
-	else if(int_line_type == 6)
+	else if (int_line_type == 6)
 	{
 		line = skip_seperator(line);
 		word_to_fields(line, word);
 		return 3;
 	}
-	else if(int_line_type == 2 || int_line_type == 4) // has instraction Rtype
+	else if (int_line_type == 2 || int_line_type == 4) // has instraction Rtype
 	{
 		line = skip_seperator(line);
 		// All the get functions also advances the line pointer
@@ -214,7 +219,7 @@ int translate_line_to_fields(char* line, LINE* assembly_line, Label* label_array
 		line = skip_seperator(line);
 		assembly_line->rt = get_reg(&line);
 		line = skip_seperator(line);
-		return 1; 
+		return 1;
 	}
 	else // has Itype instruction
 	{
@@ -420,8 +425,8 @@ int get_reg(char** line)
 
 int get_imm(char* line, Label* label_array, int max_label_array_index)
 {
-	if ((line[0]==0) && (line[1] == 'x' || line[1] == 'X')) // written in hexe
-	{ 
+	if ((line[0] == '0') && (line[1] == 'x' || line[1] == 'X')) // written in hexe
+	{
 		//line[8] = '\0'; // end the line in the end of the imm
 		return (int)strtol(line, NULL, 16); // return the hex string as a hex int
 	}
@@ -430,7 +435,7 @@ int get_imm(char* line, Label* label_array, int max_label_array_index)
 		int imm_int = 16777216;
 		for (int i = 0; i < max_label_array_index; i++) // loop on all the labels
 		{
-			if (strstr(line, label_array[i].name) != NULL) //find the label
+			if (strcmp(line, label_array[i].name) == 0) //find the label
 			{
 				imm_int = label_array[i].address; // return its address in 10 base
 				break;
@@ -473,8 +478,8 @@ char* skip_seperator(char* line)
 	{
 		i++; // count the spaces and "," until the begining of the string
 	}
-	line = line + i; 
-	return line; 
+	line = line + i;
+	return line;
 }
 
 void translate_to_fields(FILE* program, LINE* assembly_lines, Label* label_array, Word* word, int max_label_array_index, int* memory)
@@ -482,7 +487,7 @@ void translate_to_fields(FILE* program, LINE* assembly_lines, Label* label_array
 	char line[MAX_ROW_LEN];
 	int line_index = 0;
 	rewind(program); // reset the pointer of asm_program file to the begining of the file																			
-	while (NULL != fgets(line, MAX_ROW_LEN, program)) 
+	while (NULL != fgets(line, MAX_ROW_LEN, program))
 	{
 		erase_hashtag(line); // erase the # and note if exists
 		int output = translate_line_to_fields(line, &(assembly_lines[line_index]), label_array, word, max_label_array_index);
@@ -492,11 +497,11 @@ void translate_to_fields(FILE* program, LINE* assembly_lines, Label* label_array
 			line_index++;
 			if (output == 2) // Itype
 			{
-				memory[line_index] = assembly_lines[line_index-1].imm;
+				memory[line_index] = assembly_lines[line_index - 1].imm;
 				line_index++;
 			}
 		}
-		else if(output == 3) // .word instruction
+		else if (output == 3) // .word instruction
 			memory[word->address] = word->data;
 	}
 }
@@ -509,7 +514,7 @@ int hex_value(LINE* assembly_lines)
 
 
 // extract the label from the line. update name field of label
-void get_label(char* line, Label *label)
+void get_label(char* line, Label* label)
 {
 	// check the type of line and if the line has no label print error
 	int int_line_type = type_of_line(line); // 0 for empty row, 1 for only label, 2 for label+Rtype, 3 for label + Itype, 4 for only Rtype, 5 for only Itype, 6 for .word
@@ -538,7 +543,7 @@ int initilaize_label_array(FILE* asm_program, Label* label_array)
 	int PC = 0; // hold the output address
 	int label_array_index = 0; // hold the index of the label, counting one by one from the beggining
 	char line[MAX_ROW_LEN]; // hold the content of the line
-	while (NULL != fgets(line, MAX_ROW_LEN, asm_program)) 
+	while (NULL != fgets(line, MAX_ROW_LEN, asm_program))
 	{// keep reading the file line by line until the end of the file
 		erase_hashtag(line); // erase the # and note if exists
 		int int_line_type;
@@ -569,7 +574,7 @@ void write_output_to_file(FILE* output, int* memory)
 	{
 		fprintf(output, "%05x\n", memory[i]);
 	}
-	fprintf(output, "%05x", memory[MEM_SIZE-1]);
+	fprintf(output, "%05x", memory[MEM_SIZE - 1]);
 }
 
 
@@ -577,7 +582,7 @@ Word* word_to_fields(char* line, Word* word)
 {
 	line = strtok(line, "#"); // erase the # and note if exists
 	char* temp = strtok(line, ".word"); // erase the .word
-	char* current_line_pointer = line + (strlen(temp))-1; // pointer to the current place in the line, initialaze as the start of the line without .word
+	char* current_line_pointer = line + (strlen(temp)) - 1; // pointer to the current place in the line, initialaze as the start of the line without .word
 	char* end_line_pointer = line + (strlen(temp)) + strlen(line); // pointer to the end of the line without the #
 	char* address;
 	char* data;
@@ -833,4 +838,11 @@ void close_files(FILE* asm_program, FILE* memin)
 {
 	fclose(asm_program);
 	fclose(memin);
+}
+
+void free_allocate_memorry(Label* label_array, LINE* assembly_lines, int* memory)
+{
+	free(label_array);
+	free(assembly_lines);
+	free(memory);
 }
