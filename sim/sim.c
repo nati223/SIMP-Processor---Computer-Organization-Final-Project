@@ -231,7 +231,7 @@ void FillInstArr(FILE * pmemin)
 	int i = 0;
 	while (!feof(pmemin))
 	{
-		fscanf(pmemin, "%5[^\n]\n", line); //scans the first 5 chars in a line
+		fgets(line, 6, pmemin);
 		strcpy(ram_arr[i], line); //fills array[i]
 		i++;
 	}
@@ -246,12 +246,12 @@ void FillInstArr(FILE * pmemin)
 
 void FillDiskoutArr(FILE * pdiskin)
 {
-	char mline[6];
+	char line[6];
 	int i = 0;
 	while (!feof(pdiskin))
 	{
-		fscanf(pdiskin, "%5[^\n]\n", mline); //scans the first 5 chars in a line
-		strcpy(hard_disk_arr[i], mline); //disk_out_array[i]
+		fgets(line, 6, pdiskin);
+		strcpy(hard_disk_arr[i], line); //disk_out_array[i]
 		i++;
 	}
 	while (i < DISK_SIZE)
