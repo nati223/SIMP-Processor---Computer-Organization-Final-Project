@@ -7,7 +7,7 @@
 
 //Struct for commands fetched from memin.txt
 typedef struct Instruction {
-	char inst_line[6];//contains the line as String, 5 hexa digits + '\0'
+	char inst_line[6];         //contains the line as String, 5 hexa digits + '\0'
 	int opcode;
 	int rd;
 	int rs;
@@ -32,9 +32,9 @@ static int irq = 0;
 int irq_ready = 1;
 static int in_irq1 = 0;
 static int irq1_op = 0;
-static int irq1_cycle_counter = 0;
 static int mem_buffer_address;
 static int sector_pos;
+static int irq1_cycle_counter = 0;
 int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
 static int irq2_arr_cur_position = 0;
 char monitor_arr[MONITOR_SIZE + 1][9];
@@ -79,7 +79,7 @@ void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in);
 void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
 
 // Takes the 5 hexa digits that are given in memin.txt, and creates a Command struct object with it's desired fields.
-void CreateCommand(char * command_line, Instruction * inst);
+void CreateInstruction(char * instruction_line, Instruction * inst);
 
 // Checks in we are in or should interrupt
 void CheckIrqStatus();
@@ -521,7 +521,7 @@ void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num)
 	}
 }
 
-void CreateCommand(char * command_line, Instruction * inst)
+void CreateInstruction(char * command_line, Instruction * inst)
 {
 	strcpy(inst->inst_line, command_line);
 
@@ -761,7 +761,7 @@ void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FI
 	Instruction new_inst = { NULL, NULL, NULL, NULL, NULL, NULL };
 	while (pc < instruction_arr_size) //perform commands until halt or until end of file
 	{
-		CreateCommand(ram_arr[pc], &new_inst); //takes the command according to the pc
+		CreateInstruction(ram_arr[pc], &new_inst); //takes the command according to the pc
 		ExecuteInst(&new_inst, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor); //perform the command
 		CheckIrqStatus();
 		if (irq && irq_ready)
