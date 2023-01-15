@@ -22,12 +22,12 @@ typedef struct Instruction {
 #define MONITOR_SIZE 65536 // 256*256 pixels
 #define INT20_MAX 524287
 #define INT20_MIN -524288
-char ram_arr[SIZE + 1][6]; //array of based on memin.txt
+char ram_arr[SIZE][6]; //array of based on memin.txt
 static int pc = 0;
 static int instruction_arr_size;
 int inst_reg_arr[16]; //array of the registers that are used in instruction execution
 char io_registers[23][9] = {"00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000","00000000"}; // IO registers
-char hard_disk_arr[DISK_SIZE + 1][6]; //array of diskout, each line is 5 hexas + '\0' in the end
+char hard_disk_arr[DISK_SIZE][6]; //array of diskout, each line is 5 hexas + '\0' in the end
 static int irq = 0;
 int irq_ready = 1;
 static int in_irq1 = 0;
@@ -38,7 +38,7 @@ static int irq1_cycle_counter = 0;
 static unsigned int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
 static int num_of_irq2_interrupts;
 static int irq2_arr_cur_position = 0;
-char monitor_arr[MONITOR_SIZE + 1][9];
+char monitor_arr[MONITOR_SIZE][9];
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 ////////////////////////////////////////////////////////////////////////////////////////////
@@ -573,7 +573,7 @@ void DisplayWrite(FILE * pdisplay7seg)
 
 void FillMonitorArr()
 {
-	for(int i=0; i< 65536; i++)
+	for(int i=0; i < MONITOR_SIZE; i++)
 	{
 		strcpy(monitor_arr[i], "00000000");
 	}
@@ -844,20 +844,20 @@ void RegOutWrite(FILE *pregout)
 void MemOutWrite(FILE *pmemout)
 {
 	int i = 0;
-	for (i = 0; i <= SIZE; i++) //go over instruction_arr and write it to memout
+	for (i = 0; i < SIZE; i++) //go over instruction_arr and write it to memout
 		fprintf(pmemout, "%s\n", ram_arr[i]);
 }
 
 void DiskOutWrite(FILE *diskout)
 {
 	int i = 0;
-	for (i = 0; i <= DISK_SIZE; i++) //go over instruction_arr and write it to memout
+	for (i = 0; i < DISK_SIZE; i++) //go over instruction_arr and write it to memout
 		fprintf(diskout, "%s\n", hard_disk_arr[i]);
 }
 
 void MonitorWrite(FILE * pmonitor)
 {
-	for(int i=0;i<MONITOR_SIZE;i++) // Go over monitor_arr and write the 2 rightmost hexa digits.
+	for(int i=0;i < MONITOR_SIZE;i++) // Go over monitor_arr and write the 2 rightmost hexa digits.
 	{
 		fprintf(pmonitor, "%s\n", SliceStr(monitor_arr[i],6,8));	
 	}
