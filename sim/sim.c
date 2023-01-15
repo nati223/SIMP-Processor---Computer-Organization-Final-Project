@@ -214,11 +214,11 @@ void FillIrq2inArr(FILE * irq2in)
 {
 	for (int k = 0; k < SIZE; k++)
 		irq2_interrupt_cycles[k] = -1;
-	char line[10]; //because 2^32 is the maximum cycle number and it's 10 digit long
+	char line[10]; //because 2^32 is 10 digit long and it's the clock maximum value
 	int i = 0;
 	while (!feof(irq2in))
 	{
-		fgets(line, 10, irq2in);
+		fgets(line, 10, irq2in); 
 		irq2_interrupt_cycles[i] = atoi(line);
 		i++;
 	}
@@ -231,7 +231,7 @@ void FillInstArr(FILE * pmemin)
 	int i = 0;
 	while (!feof(pmemin))
 	{
-		fgets(line, 6, pmemin);
+		fscanf(pmemin, "%5[^\n]\n", line); //scans the first 5 chars in a line
 		strcpy(ram_arr[i], line); //fills array[i]
 		i++;
 	}
@@ -250,7 +250,7 @@ void FillDiskoutArr(FILE * pdiskin)
 	int i = 0;
 	while (!feof(pdiskin))
 	{
-		fgets(line, 6, pdiskin);
+		fscanf(pdiskin, "%5[^\n]\n", line); //scans the first 5 chars in a line
 		strcpy(hard_disk_arr[i], line); //disk_out_array[i]
 		i++;
 	}
@@ -849,7 +849,7 @@ void MemOutWrite(FILE *pmemout)
 void DiskOutWrite(FILE *diskout)
 {
 	int i = 0;
-	for (i = 0; i <= DISK_SIZE; i++) //go over hard_disk_arr and write it to memout
+	for (i = 0; i <= DISK_SIZE + 1; i++) //go over instruction_arr and write it to memout
 		fprintf(diskout, "%s\n", hard_disk_arr[i]);
 }
 
