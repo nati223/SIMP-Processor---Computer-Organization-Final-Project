@@ -213,8 +213,6 @@ int HexToIntUnsigned(char * h) {
 
 void FillIrq2inArr(FILE * irq2in)
 {
-	//for (int k = 0; k < SIZE; k++)
-	//	irq2_interrupt_cycles[k] = -1;
 	char line[10]; //because 2^32 is 10 digit long and it's the clock maximum value
 	int i = 0;
 	while (!feof(irq2in))
@@ -278,46 +276,47 @@ void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
 
 void HardDiskRoutine()
 {
-	if (in_irq1)
+	
+	sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
+	mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.	
+	int i = 0;
+	switch (HexToInt2sComp(io_registers[14])) // switch by disk command
 	{
-		if (irq1_cycle_counter < 1024)
-			irq1_cycle_counter++;
-		else // Data being read or written will be available in RAM or hard disk only after 1024 cycles.
+	case 0:
+		break;
+	case 1: //read sector
+		IntToHex8Signed(1, io_registers[17]);  //disk is busy
+		for(int i=0; i<1024; i++)
+			PropagateClock(); // clock and timer are ticking
+		for (i = sector_pos; i < sector_pos + 128; i++)
 		{
-			int i = 0;
-			switch (irq1_op)
-			{
-			case 1: //read sector
-				in_irq1 = 1; // raise that we are in irq1 interrupt
-				for (i = sector_pos; i < sector_pos + 128; i++)
-				{
-					strcpy(ram_arr[mem_buffer_address], hard_disk_arr[i]); // read from hard disk to buffer
-					if (mem_buffer_address + 1 == SIZE)
-						mem_buffer_address = 0; 
-					else
-						mem_buffer_address++;
-				}
-			break;
-			case 2: //write command
-				in_irq1 = 1; // raise that we are in irq1 interrupt
-				for (i = sector_pos; i < sector_pos + 128; i++)
-				{
-					strcpy(hard_disk_arr[i], ram_arr[mem_buffer_address]); // write to hard_disk from buffer
-					if (mem_buffer_address + 1 == SIZE)
-						mem_buffer_address = 0;
-					else
-						mem_buffer_address++;
-				}
-			break;
-			}
-			irq1_cycle_counter = 0;
-			in_irq1 = 0;
-			irq1_op = 0;
-			IntToHex8Signed(0, io_registers[14]);  //diskcmd is now 0
-			IntToHex8Signed(0, io_registers[17]);  //disk is free now
-			IntToHex8Signed(1, io_registers[4]);	// ready to get into irq1 again
+			strcpy(ram_arr[mem_buffer_address], hard_disk_arr[i]); // read from hard disk to buffer
+			if (mem_buffer_address + 1 == SIZE)
+				mem_buffer_address = 0; 
+			else
+				mem_buffer_address++;
 		}
+	break;
+	case 2: //write command
+		IntToHex8Signed(1, io_registers[17]);  //disk is busy
+		for(int i=0; i<1024; i++)
+			PropagateClock(); // clock and timer are ticking
+		for (i = sector_pos; i < sector_pos + 128; i++)
+		{
+			strcpy(hard_disk_arr[i], ram_arr[mem_buffer_address]); // write to hard_disk from buffer
+			if (mem_buffer_address + 1 == SIZE)
+				mem_buffer_address = 0;
+			else
+				mem_buffer_address++;
+		}
+	break;
 	}
+	irq1_cycle_counter = 0;
+	in_irq1 = 0;
+	IntToHex8Signed(0, io_registers[14]);  //diskcmd is now 0
+	IntToHex8Signed(0, io_registers[17]);  //disk is free now
+	IntToHex8Signed(1, io_registers[1]);	// ready to get into irq1 again
+	
 }
 
 void TraceWrite(Instruction  * inst, FILE * ptrace)
@@ -416,25 +415,23 @@ void TimerRoutine()
 		}
 	}
 }
-
 void CheckIrqStatus()
 {
-	if (HexToInt2sComp(io_registers[1]) && HexToInt2sComp(io_registers[4]) && irq_ready) 
+	if (HexToInt2sComp(io_registers[1]) && HexToInt2sComp(io_registers[4]) && irq_ready)
 		in_irq1 = 1; // we get irq1 interupt
 	
-	if (((irq2_interrupt_cycles[irq2_arr_cur_position] <= HexToIntUnsigned(io_registers[8]) - 1) && irq_ready) && (irq2_interrupt_cycles[irq2_arr_cur_position] != -1)) // Means we got to a cycle where irq2 is triggered
+	if (((irq2_interrupt_cycles[irq2_arr_cur_position] < HexToIntUnsigned(io_registers[8])) && irq_ready) && (irq2_arr_cur_position < num_of_irq2_interrupts)) // Means we got to a cycle where irq2 is triggered
 	{
-		if(irq2_arr_cur_position < num_of_irq2_interrupts)
-		{
-			//printf("got irq2 interrupt at %d\n", irq2_interrupt_pc[irq2_current_index]);
 			IntToHex8Signed(1, io_registers[5]); // this if triggerd the irq2status to 1 when there is intruppt
 			irq2_arr_cur_position++;
-		}
 	}
 
 	irq = ((HexToInt2sComp(io_registers[0]) && HexToInt2sComp(io_registers[3])) || ((HexToInt2sComp(io_registers[1])) && HexToInt2sComp(io_registers[4])) || (HexToInt2sComp(io_registers[2]) && HexToInt2sComp(io_registers[5]))) ? 1 : 0;
+
+	IntToHex8Signed(0, io_registers[4]);
 	IntToHex8Signed(0, io_registers[5]);
 }
+
 
 //this function write to hwregtrace.txt file
 void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num)
@@ -592,8 +589,7 @@ void PropagateClock()
 	else
 		IntToHex8Unsigned((HexToIntUnsigned(io_registers[8]) + 1), io_registers[8]);
 	
-	TimerRoutine();
-	HardDiskRoutine();
+	TimerRoutine(); // Increment timer if needed each clock
 }
 
 void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
@@ -749,17 +745,20 @@ void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemo
 			DisplayWrite(pdisplay7seg);
 			break;
 		case 14: // hard disk
-			if((inst_reg_arr[inst->rd] == 1 || inst_reg_arr[inst->rd] == 2) && !(HexToInt2sComp(io_registers[17]))) // read and disk is free
-			{
-				in_irq1 = 1;
-				sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
-				mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.
-				IntToHex8Signed(1, io_registers[17]);  //Assign disk status to 1 (busy)
-				if(inst_reg_arr[inst->rd] == 1)
-					irq1_op = 1;
-				else
-					irq1_op = 2;
-			}
+			//if((inst_reg_arr[inst->rd] == 1 || inst_reg_arr[inst->rd] == 2) && !(HexToInt2sComp(io_registers[17]))) // read and disk is free
+				IntToHex8Signed(1, io_registers[4]);  //Assign irq1 status to 1				
+			//{
+			//	in_irq1 = 1;
+			//	sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
+			//	mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.
+			//	IntToHex8Signed(1, io_registers[17]);  //Assign disk status to 1 (busy)
+			//	IntToHex8Signed(1, io_registers[1]);  //Set irq1 status to 1
+			//	IntToHex8Signed(0, io_registers[4]);  //Assign irq1 status to 1
+			//	if(inst_reg_arr[inst->rd] == 1)
+			//		irq1_op = 1;
+			//	else
+			//		irq1_op = 2;
+			//}
 			break;
 		case 22: // monitor
 			if(HexToInt2sComp(io_registers[22]) == 1)
@@ -782,15 +781,18 @@ void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FI
 	Instruction new_inst = { NULL, NULL, NULL, NULL, NULL, NULL };
 	while (pc < instruction_arr_size) //perform commands until halt or until end of file
 	{
-		CreateInstruction(ram_arr[pc], &new_inst); //takes the command according to the pc
-		ExecuteInst(&new_inst, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor); //perform the command
-		CheckIrqStatus();
+		CheckIrqStatus(); // Check for interrupts prior to instruction execution
 		if (irq && irq_ready)
-		{
+		{	
 			IntToHex8Signed(pc, io_registers[7]);
 			pc = HexToInt2sComp(io_registers[6]); //the proccessor is ready to jump to interrupt
+			if(in_irq1 && !(HexToInt2sComp(io_registers[17]))) // if we are in irq1 and disk is not busy, start hard disk routine
+				HardDiskRoutine();
 			irq_ready = 0;
 		}
+		CreateInstruction(ram_arr[pc], &new_inst); //takes the command according to the pc
+		ExecuteInst(&new_inst, ptrace, pcycles, pmemout, pregout, pleds, pdiskout, pdisplay7seg, phwregtrace, pmonitor); //perform the command
+
 	}
 }
 
