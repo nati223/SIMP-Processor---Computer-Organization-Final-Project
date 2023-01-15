@@ -214,11 +214,11 @@ void FillIrq2inArr(FILE * irq2in)
 {
 	for (int k = 0; k < SIZE; k++)
 		irq2_interrupt_cycles[k] = -1;
-	char line[6];
+	char line[10]; //because 2^32 is the maximum cycle number and it's 10 digit long
 	int i = 0;
 	while (!feof(irq2in))
 	{
-		fgets(line, 10, irq2in); 
+		fgets(line, 10, irq2in);
 		irq2_interrupt_cycles[i] = atoi(line);
 		i++;
 	}
