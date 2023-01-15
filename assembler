@@ -112,7 +112,7 @@ int main(int argc, char* argv[]) {
 	close_files(asm_program, memin);
 	free_allocate_memorry(label_array, assembly_lines, memory);
 	//_CrtDumpMemoryLeaks();
-	return;
+	return 0;
 }
 
 
