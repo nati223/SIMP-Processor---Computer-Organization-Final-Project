@@ -18,8 +18,8 @@ typedef struct Instruction {
 ////////////////////////////////////////////////////////////////
 //Global variables:
 #define SIZE 4096
-#define DISK_SIZE 16384        //128 sectors * 128 lines
-#define MONITOR_SIZE 65536      // 256*256 pixels
+#define DISK_SIZE 16384	//128 sectors * 128 lines
+#define MONITOR_SIZE 65536 // 256*256 pixels
 #define INT20_MAX 524287
 #define INT20_MIN -524288
 char ram_arr[SIZE + 1][6]; //array of based on memin.txt
@@ -152,49 +152,16 @@ char * SliceStr(char str[], int start, int end)
 }
 
 int HexCharToInt(char h) {
-	short res;
-	switch (h) {
-	case 'A':
-		res = 10;
-		break;
-	case 'B':
-		res = 11;
-		break;
-	case 'C':
-		res = 12;
-		break;
-	case 'D':
-		res = 13;
-		break;
-	case 'E':
-		res = 14;
-		break;
-	case 'F':
-		res = 15;
-		break;
-	case 'a':
-		res = 10;
-		break;
-	case 'b':
-		res = 11;
-		break;
-	case 'c':
-		res = 12;
-		break;
-	case 'd':
-		res = 13;
-		break;
-	case 'e':
-		res = 14;
-		break;
-	case 'f':
-		res = 15;
-		break;
-	default:
-		res = atoi(&h); // if char < 10 change it to int
-		break;
-	}
-	return res;
+    if (h >= '0' && h <= '9') {
+        return h - '0';
+    }
+    else if (h >= 'A' && h <= 'F') {
+        return h - 'A' + 10;
+    }
+    else if (h >= 'a' && h <= 'f') {
+        return h - 'a' + 10;
+    }
+    return -1;
 }
 
 void IntToHex8(int dec_num, char hex_num[9])
