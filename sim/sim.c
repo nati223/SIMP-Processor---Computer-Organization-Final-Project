@@ -35,7 +35,8 @@ static int irq1_op = 0;
 static int mem_buffer_address;
 static int sector_pos;
 static int irq1_cycle_counter = 0;
-int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
+static unsigned int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
+static int num_of_irq2_interrupts;
 static int irq2_arr_cur_position = 0;
 char monitor_arr[MONITOR_SIZE + 1][9];
 
@@ -212,16 +213,17 @@ int HexToIntUnsigned(char * h) {
 
 void FillIrq2inArr(FILE * irq2in)
 {
-	for (int k = 0; k < SIZE; k++)
-		irq2_interrupt_cycles[k] = -1;
+	//for (int k = 0; k < SIZE; k++)
+	//	irq2_interrupt_cycles[k] = -1;
 	char line[10]; //because 2^32 is 10 digit long and it's the clock maximum value
 	int i = 0;
 	while (!feof(irq2in))
 	{
 		fgets(line, 10, irq2in); 
-		irq2_interrupt_cycles[i] = atoi(line);
+		irq2_interrupt_cycles[i] = (unsigned int)strtoul(line, NULL, 10);
 		i++;
 	}
+	num_of_irq2_interrupts = i;
 	fclose(irq2in);
 }
 
@@ -420,9 +422,9 @@ void CheckIrqStatus()
 	if (HexToInt2sComp(io_registers[1]) && HexToInt2sComp(io_registers[4]) && irq_ready) 
 		in_irq1 = 1; // we get irq1 interupt
 	
-	if (((irq2_interrupt_cycles[irq2_arr_cur_position] <= HexToInt2sComp(io_registers[8]) - 1) && irq_ready) && (irq2_interrupt_cycles[irq2_arr_cur_position] != -1)) // Means we got to a cycle where irq2 is triggered
+	if (((irq2_interrupt_cycles[irq2_arr_cur_position] <= HexToIntUnsigned(io_registers[8]) - 1) && irq_ready) && (irq2_interrupt_cycles[irq2_arr_cur_position] != -1)) // Means we got to a cycle where irq2 is triggered
 	{
-		if(irq2_interrupt_cycles[irq2_arr_cur_position] != -1)
+		if(irq2_arr_cur_position < num_of_irq2_interrupts)
 		{
 			//printf("got irq2 interrupt at %d\n", irq2_interrupt_pc[irq2_current_index]);
 			IntToHex8Signed(1, io_registers[5]); // this if triggerd the irq2status to 1 when there is intruppt
@@ -534,11 +536,11 @@ void HwRegTraceWrite(FILE * phwregtrace, int rw, int reg_num)
 
 	if (rw) //in command
 	{
-		fprintf(phwregtrace, "%d READ %s %s\n", HexToInt2sComp(io_registers[8]), name, io_registers[reg_num]);
+		fprintf(phwregtrace, "%u READ %s %s\n", HexToIntUnsigned(io_registers[8]), name, io_registers[reg_num]);
 	}
 	else
 	{
-		fprintf(phwregtrace, "%d WRITE %s %s\n", HexToInt2sComp(io_registers[8]), name, io_registers[reg_num]);
+		fprintf(phwregtrace, "%u WRITE %s %s\n", HexToIntUnsigned(io_registers[8]), name, io_registers[reg_num]);
 	}
 }
 
@@ -561,12 +563,12 @@ void CreateInstruction(char * command_line, Instruction * inst)
 
 void LedsWrite(FILE * pleds)
 {
-	fprintf(pleds, "%d %s\n", HexToInt2sComp(io_registers[8]), io_registers[9]);
+	fprintf(pleds, "%u %s\n", HexToIntUnsigned(io_registers[8]), io_registers[9]);
 }
 
 void DisplayWrite(FILE * pdisplay7seg)
 {
-	fprintf(pdisplay7seg, "%d %s\n", HexToInt2sComp(io_registers[8]), io_registers[10]);
+	fprintf(pdisplay7seg, "%u %s\n", HexToIntUnsigned(io_registers[8]), io_registers[10]);
 }
 
 void FillMonitorArr()
@@ -588,7 +590,7 @@ void PropagateClock()
 	if (HexToIntUnsigned(io_registers[8]) == HexToIntUnsigned("ffffffff")) // Ensuring the clock is cyclic
 		IntToHex8Unsigned(0, io_registers[8]);
 	else
-		IntToHex8Unsigned((HexToInt2sComp(io_registers[8]) + 1), io_registers[8]);
+		IntToHex8Unsigned((HexToIntUnsigned(io_registers[8]) + 1), io_registers[8]);
 	
 	TimerRoutine();
 	HardDiskRoutine();
@@ -849,7 +851,7 @@ void MemOutWrite(FILE *pmemout)
 void DiskOutWrite(FILE *diskout)
 {
 	int i = 0;
-	for (i = 0; i <= DISK_SIZE + 1; i++) //go over instruction_arr and write it to memout
+	for (i = 0; i <= DISK_SIZE; i++) //go over instruction_arr and write it to memout
 		fprintf(diskout, "%s\n", hard_disk_arr[i]);
 }
 
@@ -863,7 +865,7 @@ void MonitorWrite(FILE * pmonitor)
 
 void EndProcedure(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
-	fprintf(pcycles, "%d", HexToInt2sComp(io_registers[8]));
+	fprintf(pcycles, "%u", HexToIntUnsigned(io_registers[8]));
 	DiskOutWrite(pdiskout);
 	RegOutWrite(pregout);
 	MemOutWrite(pmemout);
