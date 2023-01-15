@@ -50,11 +50,17 @@ char * SliceStr(char str[], int start, int end);
 //Maps hexa digits to their decimal value and returns it as an integer.
 int HexCharToInt(char h);
 
-//Converts and integer to an 8 digit hexa string
-void IntToHex8(int dec_num, char hex_num[9]);
+//Converts an integer to an 8 digit hexa string
+void IntToHex8Signed(int dec_num, char hex_num[9]);
+
+//Converts an unsigned integer to an 8 digit hexa string
+void IntToHex8Unsigned(unsigned int dec_num, char hex_num[9]);
 
 // Converts a string holds an hexadecimal representation of a number, and returns the number as an integer.
 int HexToInt2sComp(char * h);
+
+// Converts a string holds an hexadecimal representation of a number, and returns the number as an unsigned integer.
+int HexToIntUnsigned(char * h);
 
 // Initialization Functions //
 
@@ -164,10 +170,15 @@ int HexCharToInt(char h) {
     return -1;
 }
 
-void IntToHex8(int dec_num, char hex_num[9])
+void IntToHex8Signed(int dec_num, char hex_num[9])
 {
 	if (dec_num < 0) //if dec_num is negative, add 2^32 to it
 		dec_num = dec_num + 4294967296; // dec_num = dec_num + 2^32
+	sprintf(hex_num, "%08X", dec_num); //set hex_num to be dec_num in signed hex
+}
+
+void IntToHex8Unsigned(unsigned int dec_num, char hex_num[9])
+{
 	sprintf(hex_num, "%08X", dec_num); //set hex_num to be dec_num in signed hex
 }
 
@@ -183,7 +194,15 @@ int HexToInt2sComp(char * h) {
 	{
 		res |= -1 * (1 << (len * 4)); // perform bitwise or with the mask of 8-len times 1's and len time 0's
 	}
+	return res;
+}
 
+int HexToIntUnsigned(char * h) {
+	int i;
+	unsigned int res = 0;
+	int len = strlen(h);
+	for (i = 0; i < len; i++)
+		res += HexCharToInt(h[len - 1 - i]) * (1 << (4 * i)); // change char by char from right to left, and shift it left 4*i times (2^4i) 
 	return res;
 }
 
@@ -199,7 +218,7 @@ void FillIrq2inArr(FILE * irq2in)
 	int i = 0;
 	while (!feof(irq2in))
 	{
-		fgets(line, 10, irq2in); //scans the first 8 chars in a line - FIXME: should make this line clearer
+		fgets(line, 10, irq2in); 
 		irq2_interrupt_cycles[i] = atoi(line);
 		i++;
 	}
@@ -272,7 +291,7 @@ void HardDiskRoutine()
 				{
 					strcpy(ram_arr[mem_buffer_address], hard_disk_arr[i]); // read from hard disk to buffer
 					if (mem_buffer_address + 1 == SIZE)
-						mem_buffer_address = 0; //FIXME - ask in the forum about that
+						mem_buffer_address = 0; 
 					else
 						mem_buffer_address++;
 				}
@@ -292,9 +311,9 @@ void HardDiskRoutine()
 			irq1_cycle_counter = 0;
 			in_irq1 = 0;
 			irq1_op = 0;
-			IntToHex8(0, io_registers[14]);  //diskcmd is now 0
-			IntToHex8(0, io_registers[17]);  //disk is free now
-			IntToHex8(1, io_registers[4]);	// ready to get into irq1 again
+			IntToHex8Signed(0, io_registers[14]);  //diskcmd is now 0
+			IntToHex8Signed(0, io_registers[17]);  //disk is free now
+			IntToHex8Signed(1, io_registers[4]);	// ready to get into irq1 again
 		}
 	}
 }
@@ -324,58 +343,58 @@ void TraceWrite(Instruction  * inst, FILE * ptrace)
 
 	char hexa_num[9];
 
-	IntToHex8(pc, hexa_num);
+	IntToHex8Signed(pc, hexa_num);
 	strcpy(pc_hexa, SliceStr(hexa_num,5,7));
 
-	IntToHex8(inst_reg_arr[0], hexa_num);
+	IntToHex8Signed(inst_reg_arr[0], hexa_num);
 	strcpy(r0, hexa_num);
 	
 	if((inst->rt == 1) || (inst->rs == 1) || (inst->rd == 1))
-		IntToHex8(inst->imm, hexa_num);
+		IntToHex8Signed(inst->imm, hexa_num);
 	else
-		IntToHex8(0,hexa_num);
+		IntToHex8Signed(0,hexa_num);
 	strcpy(r1, hexa_num);
 
-	IntToHex8(inst_reg_arr[2], hexa_num);
+	IntToHex8Signed(inst_reg_arr[2], hexa_num);
 	strcpy(r2, hexa_num);
 
-	IntToHex8(inst_reg_arr[3], hexa_num);
+	IntToHex8Signed(inst_reg_arr[3], hexa_num);
 	strcpy(r3, hexa_num);
 
-	IntToHex8(inst_reg_arr[4], hexa_num);
+	IntToHex8Signed(inst_reg_arr[4], hexa_num);
 	strcpy(r4, hexa_num);
 
-	IntToHex8(inst_reg_arr[5], hexa_num);
+	IntToHex8Signed(inst_reg_arr[5], hexa_num);
 	strcpy(r5, hexa_num);
 
-	IntToHex8(inst_reg_arr[6], hexa_num);
+	IntToHex8Signed(inst_reg_arr[6], hexa_num);
 	strcpy(r6, hexa_num);
 
-	IntToHex8(inst_reg_arr[7], hexa_num);
+	IntToHex8Signed(inst_reg_arr[7], hexa_num);
 	strcpy(r7, hexa_num);
 
-	IntToHex8(inst_reg_arr[8], hexa_num);
+	IntToHex8Signed(inst_reg_arr[8], hexa_num);
 	strcpy(r8, hexa_num);
 
-	IntToHex8(inst_reg_arr[9], hexa_num);
+	IntToHex8Signed(inst_reg_arr[9], hexa_num);
 	strcpy(r9, hexa_num);
 
-	IntToHex8(inst_reg_arr[10], hexa_num);
+	IntToHex8Signed(inst_reg_arr[10], hexa_num);
 	strcpy(r10, hexa_num);
 
-	IntToHex8(inst_reg_arr[11], hexa_num);
+	IntToHex8Signed(inst_reg_arr[11], hexa_num);
 	strcpy(r11, hexa_num);
 
-	IntToHex8(inst_reg_arr[12], hexa_num);
+	IntToHex8Signed(inst_reg_arr[12], hexa_num);
 	strcpy(r12, hexa_num);
 
-	IntToHex8(inst_reg_arr[13], hexa_num);
+	IntToHex8Signed(inst_reg_arr[13], hexa_num);
 	strcpy(r13, hexa_num);
 
-	IntToHex8(inst_reg_arr[14], hexa_num);
+	IntToHex8Signed(inst_reg_arr[14], hexa_num);
 	strcpy(r14, hexa_num);
 
-	IntToHex8(inst_reg_arr[15], hexa_num);
+	IntToHex8Signed(inst_reg_arr[15], hexa_num);
 	strcpy(r15, hexa_num);
 
 	fprintf(ptrace, "%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s\n", pc_hexa, inst_hexa_line, r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15);
@@ -384,13 +403,15 @@ void TraceWrite(Instruction  * inst, FILE * ptrace)
 void TimerRoutine()
 {
 	if (HexToInt2sComp(io_registers[11]) == 1) // Timerenable is 1 indicates that timer request has occured. 0 will stop the count.
-		if (HexToInt2sComp(io_registers[12]) + 1 <= HexToInt2sComp(io_registers[13])) //if timercurrent is less than timermax
-			IntToHex8((HexToInt2sComp(io_registers[12]) + 1), io_registers[12]);
-
-	if (((HexToInt2sComp(io_registers[12]) + 1) > HexToInt2sComp(io_registers[13])) && ((HexToInt2sComp(io_registers[13])) != 0))
 	{
-		IntToHex8(1, io_registers[3]); //if timecurrent is equal to timermax then irq0status is 1
-		IntToHex8(0, io_registers[12]); //when timecurrent is equal to timermax, we set it to 0 and start counting again
+		if (HexToIntUnsigned(io_registers[12]) + 1 <= HexToIntUnsigned(io_registers[13])) //if timercurrent is less than timermax
+			IntToHex8Unsigned((HexToIntUnsigned(io_registers[12]) + 1), io_registers[12]);
+
+		if (((HexToIntUnsigned(io_registers[12]) + 1) > HexToIntUnsigned(io_registers[13])) && ((HexToIntUnsigned(io_registers[13])) != 0))
+		{
+			IntToHex8Unsigned(1, io_registers[3]); //if timecurrent is equal to timermax then irq0status is 1
+			IntToHex8Unsigned(0, io_registers[12]); //when timecurrent is equal to timermax, we set it to 0 and start counting again
+		}
 	}
 }
 
@@ -404,13 +425,13 @@ void CheckIrqStatus()
 		if(irq2_interrupt_cycles[irq2_arr_cur_position] != -1)
 		{
 			//printf("got irq2 interrupt at %d\n", irq2_interrupt_pc[irq2_current_index]);
-			IntToHex8(1, io_registers[5]); // this if triggerd the irq2status to 1 when there is intruppt
+			IntToHex8Signed(1, io_registers[5]); // this if triggerd the irq2status to 1 when there is intruppt
 			irq2_arr_cur_position++;
 		}
 	}
 
 	irq = ((HexToInt2sComp(io_registers[0]) && HexToInt2sComp(io_registers[3])) || ((HexToInt2sComp(io_registers[1])) && HexToInt2sComp(io_registers[4])) || (HexToInt2sComp(io_registers[2]) && HexToInt2sComp(io_registers[5]))) ? 1 : 0;
-	IntToHex8(0, io_registers[5]);
+	IntToHex8Signed(0, io_registers[5]);
 }
 
 //this function write to hwregtrace.txt file
@@ -564,10 +585,10 @@ void UpdateMonitorArr()
 
 void PropagateClock()
 {
-	if (HexToInt2sComp(io_registers[8]) == HexToInt2sComp("ffffffff")) // Ensuring the clock is cyclic
-		IntToHex8(0, io_registers[8]);
+	if (HexToIntUnsigned(io_registers[8]) == HexToIntUnsigned("ffffffff")) // Ensuring the clock is cyclic
+		IntToHex8Unsigned(0, io_registers[8]);
 	else
-		IntToHex8((HexToInt2sComp(io_registers[8]) + 1), io_registers[8]);
+		IntToHex8Unsigned((HexToInt2sComp(io_registers[8]) + 1), io_registers[8]);
 	
 	TimerRoutine();
 	HardDiskRoutine();
@@ -575,9 +596,7 @@ void PropagateClock()
 
 void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay7seg, FILE * phwregtrace, FILE * pmonitor)
 {
-	// FIXME - didn't go over the constants or function below until switch
 	TraceWrite(inst, ptrace); //write to trace before the command
-	//Determine by how much cycles the command took
 	char hex_num[9];
 	char hex_num_temp[9] = "00000000";
 	int *result;
@@ -701,7 +720,7 @@ void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemo
 		break;
 	case 17: //sw
 		PropagateClock();
-		IntToHex8(inst_reg_arr[inst->rd], hex_num_temp);
+		IntToHex8Signed(inst_reg_arr[inst->rd], hex_num_temp);
 		char *store;
 		store = SliceStr(hex_num_temp,3,8);
 		strcpy(ram_arr[(inst_reg_arr[inst->rs] + inst_reg_arr[inst->rt])], store); // store back in memory
@@ -717,7 +736,7 @@ void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemo
 		HwRegTraceWrite(phwregtrace, 1, inst_reg_arr[inst->rs] + inst_reg_arr[inst->rt]);
 		break;
 	case 20: //out
-		IntToHex8(inst_reg_arr[inst->rd], io_registers[inst_reg_arr[inst->rs] + inst_reg_arr[inst->rt]]);
+		IntToHex8Signed(inst_reg_arr[inst->rd], io_registers[inst_reg_arr[inst->rs] + inst_reg_arr[inst->rt]]);
 		HwRegTraceWrite(phwregtrace, 0, inst_reg_arr[inst->rs] + inst_reg_arr[inst->rt]);
 		switch (inst_reg_arr[inst->rs] + inst_reg_arr[inst->rt]) 
 		{
@@ -733,7 +752,7 @@ void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemo
 				in_irq1 = 1;
 				sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
 				mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.
-				IntToHex8(1, io_registers[17]);  //Assign disk status to 1 (busy)
+				IntToHex8Signed(1, io_registers[17]);  //Assign disk status to 1 (busy)
 				if(inst_reg_arr[inst->rd] == 1)
 					irq1_op = 1;
 				else
@@ -766,7 +785,7 @@ void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FI
 		CheckIrqStatus();
 		if (irq && irq_ready)
 		{
-			IntToHex8(pc, io_registers[7]);
+			IntToHex8Signed(pc, io_registers[7]);
 			pc = HexToInt2sComp(io_registers[6]); //the proccessor is ready to jump to interrupt
 			irq_ready = 0;
 		}
