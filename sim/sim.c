@@ -849,7 +849,7 @@ void MemOutWrite(FILE *pmemout)
 void DiskOutWrite(FILE *diskout)
 {
 	int i = 0;
-	for (i = 0; i <= DISK_SIZE + 1; i++) //go over instruction_arr and write it to memout
+	for (i = 0; i <= DISK_SIZE; i++) //go over hard_disk_arr and write it to memout
 		fprintf(diskout, "%s\n", hard_disk_arr[i]);
 }
 
