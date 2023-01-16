@@ -31,9 +31,6 @@ char hard_disk_arr[DISK_SIZE][6]; //array of diskout, each line is 5 hexas + '\0
 static int irq = 0;
 int irq_ready = 1;
 static int in_irq1 = 0;
-static int irq1_op = 0;
-static int mem_buffer_address;
-static int sector_pos;
 static int irq1_cycle_counter = 0;
 static unsigned int irq2_interrupt_cycles[SIZE] = { 0 }; // array of all the pc which has irq2in interrupt
 static int num_of_irq2_interrupts;
@@ -277,8 +274,8 @@ void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
 void HardDiskRoutine()
 {
 	
-	sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
-	mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.	
+	int sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
+	int mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.	
 	int i = 0;
 	switch (HexToInt2sComp(io_registers[14])) // switch by disk command
 	{
@@ -745,20 +742,7 @@ void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemo
 			DisplayWrite(pdisplay7seg);
 			break;
 		case 14: // hard disk
-			//if((inst_reg_arr[inst->rd] == 1 || inst_reg_arr[inst->rd] == 2) && !(HexToInt2sComp(io_registers[17]))) // read and disk is free
 				IntToHex8Signed(1, io_registers[4]);  //Assign irq1 status to 1				
-			//{
-			//	in_irq1 = 1;
-			//	sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
-			//	mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.
-			//	IntToHex8Signed(1, io_registers[17]);  //Assign disk status to 1 (busy)
-			//	IntToHex8Signed(1, io_registers[1]);  //Set irq1 status to 1
-			//	IntToHex8Signed(0, io_registers[4]);  //Assign irq1 status to 1
-			//	if(inst_reg_arr[inst->rd] == 1)
-			//		irq1_op = 1;
-			//	else
-			//		irq1_op = 2;
-			//}
 			break;
 		case 22: // monitor
 			if(HexToInt2sComp(io_registers[22]) == 1)
