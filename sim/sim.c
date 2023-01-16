@@ -91,7 +91,7 @@ void CheckIrqStatus();
 //This function controls the instruction execution in the program. It chooses the correct instruction according to opcode, and performs the desired operations according to the specifications. Handling clock propagation, and the keeping the correct pc value is also done here. Checking overflow is done for addition, subtraction and multiplication.
 void ExecuteInst(Instruction * inst, FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FILE * pleds, FILE * pdiskout, FILE * pdisplay, FILE * phwregtrace, FILE * pmonitor);
 
-//Propagates clock by one each time it's called, and sets it to 0 (cyclicity) after when overflow occurs.
+//Propagates clock by one each time it's called, and sets it to 0 (cyclicity) after when overflow occurs. Handles timer as well if trigerred.
 void PropagateClock();
 
 //Checks if overflow has occured in one of the following operations: addition, subtraction, multiplication.
@@ -272,42 +272,45 @@ void SetArrays(FILE * pdiskin, FILE * pmemin, FILE * pirq2in)
 ////////////////////////////////////////////////////////////////
 
 void HardDiskRoutine()
-{
-	
+{	
 	int sector_pos = HexToInt2sComp(io_registers[15]) * 128; // Get the sector starting position in hard_disk_arr
 	int mem_buffer_address = HexToInt2sComp(io_registers[16]); // Get the starting position of the buffer in memory to read\write from\to.	
 	int i = 0;
-	switch (HexToInt2sComp(io_registers[14])) // switch by disk command
+	if (!(HexToInt2sComp(io_registers[17])))
 	{
-	case 0:
+		switch (HexToInt2sComp(io_registers[14])) // switch by disk command
+		{
+		case 0:
+			break;
+		case 1: //read sector
+			IntToHex8Signed(1, io_registers[17]);  //disk is busy
+			for(int i=0; i<1024; i++)
+				PropagateClock(); // clock and timer are ticking
+			for (i = sector_pos; i < sector_pos + 128; i++)
+			{
+				strcpy(ram_arr[mem_buffer_address], hard_disk_arr[i]); // read from hard disk to buffer
+				if (mem_buffer_address + 1 == SIZE)
+					mem_buffer_address = 0; 
+				else
+					mem_buffer_address++;
+			}
 		break;
-	case 1: //read sector
-		IntToHex8Signed(1, io_registers[17]);  //disk is busy
-		for(int i=0; i<1024; i++)
-			PropagateClock(); // clock and timer are ticking
-		for (i = sector_pos; i < sector_pos + 128; i++)
-		{
-			strcpy(ram_arr[mem_buffer_address], hard_disk_arr[i]); // read from hard disk to buffer
-			if (mem_buffer_address + 1 == SIZE)
-				mem_buffer_address = 0; 
-			else
-				mem_buffer_address++;
+		case 2: //write command
+			IntToHex8Signed(1, io_registers[17]);  //disk is busy
+			for(int i=0; i<1024; i++)
+				PropagateClock(); // clock and timer are ticking
+			for (i = sector_pos; i < sector_pos + 128; i++)
+			{
+				strcpy(hard_disk_arr[i], ram_arr[mem_buffer_address]); // write to hard_disk from buffer
+				if (mem_buffer_address + 1 == SIZE)
+					mem_buffer_address = 0;
+				else
+					mem_buffer_address++;
+			}
+		break;
 		}
-	break;
-	case 2: //write command
-		IntToHex8Signed(1, io_registers[17]);  //disk is busy
-		for(int i=0; i<1024; i++)
-			PropagateClock(); // clock and timer are ticking
-		for (i = sector_pos; i < sector_pos + 128; i++)
-		{
-			strcpy(hard_disk_arr[i], ram_arr[mem_buffer_address]); // write to hard_disk from buffer
-			if (mem_buffer_address + 1 == SIZE)
-				mem_buffer_address = 0;
-			else
-				mem_buffer_address++;
-		}
-	break;
 	}
+
 	irq1_cycle_counter = 0;
 	in_irq1 = 0;
 	IntToHex8Signed(0, io_registers[14]);  //diskcmd is now 0
@@ -770,7 +773,7 @@ void FetchInst(FILE * ptrace, FILE * pcycles, FILE * pmemout, FILE * pregout, FI
 		{	
 			IntToHex8Signed(pc, io_registers[7]);
 			pc = HexToInt2sComp(io_registers[6]); //the proccessor is ready to jump to interrupt
-			if(in_irq1 && !(HexToInt2sComp(io_registers[17]))) // if we are in irq1 and disk is not busy, start hard disk routine
+			if(in_irq1) // if we are in irq1 and disk is not busy, start hard disk routine
 				HardDiskRoutine();
 			irq_ready = 0;
 		}
