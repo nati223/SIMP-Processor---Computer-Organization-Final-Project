@@ -1,30 +1,28 @@
+add $t0, $zero, $imm, 1								# prepare to enable
+out $t0, $zero, $imm, 1								# enable irq1
 add $a0, $zero, $imm, 0                         	# set arbitrary sector
 add $a1, $zero, $imm, 1								# set arbitrary sector
-add $t0, $zero, $imm, 1								# prepare to enable
-out $imm, $zero, $t0, 1								# enable irq1
- 
+add $t1, $zero, $imm, wait							# prepare wait to be irq1handler
+out $t1, $zero, $imm, 6
+
 SEC0:
 	in $t0, $zero, $imm, 17					    	# read diskstatus
 	beq $imm, $t0, $zero, SEC0FREE				    # check if disk is free, if so branch to next section
 	beq $imm, $zero, $zero, SEC0			    	# if busy, repeat SEC0 (loop)
 SEC0FREE:
-	add $t0, $zero, $imm , 1			     	    # set to enable the read later
+	add $t0, $zero, $imm , 1			     	    # set $t0 to read later
 	out $a0, $imm, $zero, 15   						# IoRegisters[15] = sector0 (disksector)
     add $t1, $zero, $imm, 2048                      # prep IoRegisters[16] = 2048 (arbitrary diskbuffer)
-	out $t1, $zero, $imm, 16   					    # IoRegisters[16] = 0 (diskbuffer)
-	out $t0, $zero, $imm, 14     					# read and Ioregisters[14] = 1
-SEC1:
-	in $t0, $zero, $imm, 17 						# read diskstatus, 16
-	beq $imm, $t0, $zero, SEC1FREE  				# check if disk is free, if so branch to next section
-	beq $imm, $zero, $zero, SEC1 			    	# if busy, repeat SEC1 (loop) else, continue
+	out $t1, $zero, $imm, 16   					    # IoRegisters[16] = 2048 (diskbuffer set)
+	out $t0, $zero, $imm, 14     					# read Ioregisters[14] = 1
 SEC1FREE:
 	add $t0, $zero, $imm , 1			     	    # set to enable the read later
 	out $a1, $imm, $zero, 15   						# IoRegisters[15] = sector1 (disksector)
     add $t1, $zero, $imm, 2176                      # prep IoRegisters[16] = 2176 (diskbuffer)
-	out $t1, $zero, $imm, 16   					    # IoRegisters[16] = 2176 (diskbuffer)
+	out $t1, $zero, $imm, 16   					    # IoRegisters[16] = 2176 (diskbuffer set)
 	out $t0, $zero, $imm, 14     					# read and Ioregisters[14] = 1
 HDFREE:
-	in $t1, $zero, $imm, 17							# read diskstatus, 26
+	in $t1, $zero, $imm, 17							# read diskstatus
 	bne $imm, $zero, $t1, HDFREE					# repeat until hard disk is free, so the program can continue
 INITSUM:
 	add $a0, $zero, $zero, 0						# index=0
@@ -54,4 +52,5 @@ op2:
 END:
 	out $zero, $imm, $zero, 1						# disable irq1
 	halt $zero, $zero, $zero, 0						# program is finished
-				
+wait:
+	reti $zero, $zero, $zero, 0						# let reading\writing perform and return
