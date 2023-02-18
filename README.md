@@ -1,4 +1,4 @@
-# ISA-Simulator---Computer-Organization-Final-Project
+# SIMP-Processor--Computer-Structure-Final-Project
 
 Here we present you the final project of Computer Structure project held in Tel Aviv University, Fall 2022.
 
@@ -27,3 +27,10 @@ The simulator is written in the C programming language and will be run from a co
 sim.exe memin.txt diskin.txt irq2in.txt memout.txt regout.txt trace.txt hwregtrace.txt cycles.txt leds.txt display7seg.txt diskout.txt monitor.txt monitor.yuv
 
 Full description of the project and detailed specifications are in the pdf file.
+
+Folders content:
+Assembler - assembler code and documentation
+Simulator - simulator code and documentation
+Test programs - three assembly programs that were used to test the processor
+Test simulations - the outcomes of the simulations running with the written assembler and simulator. Fibo example is based on a test file given
+by the course instructors for sanity check.
