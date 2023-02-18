@@ -1,7 +1,7 @@
-add $t0, $imm, $zero, 800				# $t0= arbitrary parameter
-add $t1, $imm, $zero, 30				# $t1=arbitrary parameter
-sw $t0, $imm, $zero, 0x100				# save the value $t0 in address 0x100
-sw $t1, $imm, $zero, 0x101				# save the value $t0 in address 0x101
+add $sp, $sp, $imm, -2						    # open 2 places in our stack, 0
+sw $s0, $sp, $zero, 0						    # save s0 in stack, 2
+sw $s1, $sp, $imm, 1						    # save s1 in stack, 3
+beq $imm, $zero, $zero, main                    # go to main ,5
 
 draw:
 lw $s0, $imm, $zero, 0x100				# load the upper-left corner from 0x100 to $s0, $s0 is the upper left-hand corner
@@ -49,7 +49,14 @@ loop_row:
 
 end:
 	out $zero, $imm, $zero, 22			# IORegiste[22] = 0, monitorcmd set on 00
-	lw $s0, $sp, $zero, 0				# restore $s0
-	lw $s1, $sp, $imm, 1				# restore $s1
-	add $sp, $sp, $imm, 2				# load 2 places back
+	lw $s0, $sp, $zero, 0				# restore $s0, 4B
+	lw $s1, $sp, $imm, 1				# restore $s1, 4C
+	add $sp, $sp, $imm, 2				# load 2 places back, 4E
 	halt $zero, $zero, $zero, 0
+
+main:
+add $t0, $imm, $zero, 800				# $t0=parameter
+add $t1, $imm, $zero, 30				# $t1=parameter
+sw $t0, $imm, $zero, 0x100				# save the value $t0 in address 0x100
+sw $t1, $imm, $zero, 0x101				# save the value $t0 in address 0x101
+beq $imm, $zero, $zero, draw 

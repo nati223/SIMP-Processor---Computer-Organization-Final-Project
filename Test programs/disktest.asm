@@ -1,9 +1,9 @@
 add $t0, $zero, $imm, 1								# prepare to enable
 out $t0, $zero, $imm, 1								# enable irq1
-add $a0, $zero, $imm, 0                         	# set arbitrary sector
-add $a1, $zero, $imm, 1								# set arbitrary sector
-add $t1, $zero, $imm, wait							# prepare wait to be irq1handler
-out $t1, $zero, $imm, 6
+add $a0, $zero, $imm, 0                         	# set arbitrary sector (can be any number between 0-127)
+add $a1, $zero, $imm, 1								# set arbitrary sector (can be any number between 0-127)
+add $t1, $zero, $imm, wait							# prepare wait section to be irq1handler
+out $t1, $zero, $imm, 6								# set wait as irq1handler
 
 SEC0:
 	in $t0, $zero, $imm, 17					    	# read diskstatus
@@ -32,10 +32,10 @@ INITSUM:
     add $t1, $zero, $imm, 2048						# set sector0
     add $t2, $zero, $imm, 2176						# set sector1
 SUM_SEC:
-	lw $s0, $zero, $t1, 0							#load from mem sector 0 to $s0
-	lw $s1, $zero, $t2, 0							#load from mem sector 1 to $s1
-	add $a1, $a1, $s0, 0							# 
-	add $a2, $a2 , $s1, 0							# 
+	lw $s0, $zero, $t1, 0							# load from mem sector 0 to $s0
+	lw $s1, $zero, $t2, 0							# load from mem sector 1 to $s1
+	add $a1, $a1, $s0, 0							# aggregate sum of sector0
+	add $a2, $a2 , $s1, 0							# aggregate sum of sector1
 	add $a0, $a0, $imm , 1				            # i++ 
 	add $t1, $t1, $imm, 1							# increment reading position
 	add $t2, $t2, $imm, 1							# increment reading position
@@ -45,7 +45,7 @@ STORE:
     sw $a2, $zero, $imm, 257						# store sector1 in 0x101
     bgt $imm, $a2, $a1, op2							# brach if sector1 sum > sector0 sum
 op1:
-    sw $a1, $zero, $imm, 258						# store in 0x102 sector0 sum
+	sw $a1, $zero, $imm, 258						# store in 0x102 sector0 sum
     beq $imm, $zero, $zero, END						# Go to end of program
 op2:
     sw $a2, $zero, $imm, 258						# store in 0x102 sector1 sum
