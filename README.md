@@ -25,3 +25,5 @@ The simulator simulates the fetch-decode-execute loop. At the beginning of the r
 The simulator is written in the C programming language and will be run from a command line application that receives 13 command line parameters as written in the following execution line:
 
 sim.exe memin.txt diskin.txt irq2in.txt memout.txt regout.txt trace.txt hwregtrace.txt cycles.txt leds.txt display7seg.txt diskout.txt monitor.txt monitor.yuv
+
+Full description of the project and detailed specifications are in the pdf file.
