@@ -29,8 +29,12 @@ sim.exe memin.txt diskin.txt irq2in.txt memout.txt regout.txt trace.txt hwregtra
 Full description of the project and detailed specifications are in the pdf file.
 
 Folders content:
+
 Assembler - assembler code and documentation
+
 Simulator - simulator code and documentation
+
 Test programs - three assembly programs that were used to test the processor
+
 Test simulations - the outcomes of the simulations running with the written assembler and simulator. Fibo example is based on a test file given
 by the course instructors for sanity check.
